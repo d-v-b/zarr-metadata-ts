@@ -1,0 +1,113 @@
+[
+  {
+    "description": "minimal valid group",
+    "document": { "zarr_format": 3, "node_type": "group" },
+    "problems": []
+  },
+  {
+    "description": "valid group with attributes and an ignorable extension field",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "attributes": { "title": "my hierarchy", "nested": { "a": [1, null, "x"] } },
+      "custom:field": { "must_understand": false }
+    },
+    "problems": []
+  },
+  {
+    "description": "valid group carrying inline consolidated metadata with array and group entries",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "inline",
+        "must_understand": false,
+        "metadata": {
+          "child_array": {
+            "zarr_format": 3,
+            "node_type": "array",
+            "shape": [10],
+            "data_type": "float64",
+            "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+            "chunk_key_encoding": "default",
+            "fill_value": 0,
+            "codecs": ["bytes"]
+          },
+          "child_group": { "zarr_format": 3, "node_type": "group" }
+        }
+      }
+    },
+    "problems": []
+  },
+  {
+    "description": "consolidated_metadata: null (historical zarr-python bug) is structurally accepted",
+    "document": { "zarr_format": 3, "node_type": "group", "consolidated_metadata": null },
+    "problems": []
+  },
+  {
+    "description": "missing node_type",
+    "document": { "zarr_format": 3 },
+    "problems": [{ "loc": ["node_type"], "kind": "missing_key" }]
+  },
+  {
+    "description": "array node_type in a group document",
+    "document": { "zarr_format": 3, "node_type": "array" },
+    "problems": [{ "loc": ["node_type"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "consolidated envelope with wrong kind and must_understand",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "external",
+        "must_understand": true,
+        "metadata": {}
+      }
+    },
+    "problems": [
+      { "loc": ["consolidated_metadata", "kind"], "kind": "invalid_value" },
+      { "loc": ["consolidated_metadata", "must_understand"], "kind": "invalid_value" }
+    ]
+  },
+  {
+    "description": "consolidated entry without a usable node_type",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "inline",
+        "must_understand": false,
+        "metadata": { "a": { "zarr_format": 3 } }
+      }
+    },
+    "problems": [
+      { "loc": ["consolidated_metadata", "metadata", "a", "node_type"], "kind": "invalid_value" }
+    ]
+  },
+  {
+    "description": "consolidated array entry missing its required keys",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "inline",
+        "must_understand": false,
+        "metadata": { "arr": { "zarr_format": 3, "node_type": "array" } }
+      }
+    },
+    "problems": [
+      { "loc": ["consolidated_metadata", "metadata", "arr", "chunk_grid"], "kind": "missing_key" },
+      { "loc": ["consolidated_metadata", "metadata", "arr", "chunk_key_encoding"], "kind": "missing_key" },
+      { "loc": ["consolidated_metadata", "metadata", "arr", "codecs"], "kind": "missing_key" },
+      { "loc": ["consolidated_metadata", "metadata", "arr", "data_type"], "kind": "missing_key" },
+      { "loc": ["consolidated_metadata", "metadata", "arr", "fill_value"], "kind": "missing_key" },
+      { "loc": ["consolidated_metadata", "metadata", "arr", "shape"], "kind": "missing_key" }
+    ]
+  },
+  {
+    "description": "attributes that is not an object",
+    "document": { "zarr_format": 3, "node_type": "group", "attributes": 5 },
+    "problems": [{ "loc": ["attributes"], "kind": "invalid_type" }]
+  }
+]

@@ -1,0 +1,197 @@
+[
+  {
+    "description": "minimal valid array",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": []
+  },
+  {
+    "description": "valid array with every optional member",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100, 100],
+      "chunks": [10, 10],
+      "dtype": "|u1",
+      "compressor": { "id": "blosc", "cname": "zstd", "clevel": 5, "shuffle": 1, "blocksize": 0 },
+      "fill_value": null,
+      "order": "F",
+      "filters": [{ "id": "delta", "dtype": "<i4" }],
+      "dimension_separator": "/",
+      "attributes": { "units": "seconds", "flag": true }
+    },
+    "problems": []
+  },
+  {
+    "description": "valid structured dtype with nested records and a subarray field",
+    "document": {
+      "zarr_format": 2,
+      "shape": [10],
+      "chunks": [10],
+      "dtype": [
+        ["a", "<i4"],
+        ["b", "<f8", [2, 2]],
+        ["c", [["d", "<i2"], ["e", "|b1"]]]
+      ],
+      "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": []
+  },
+  {
+    "description": "chunks dimensionality disagrees with shape",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100, 100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [{ "loc": ["chunks"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "every required key but zarr_format missing",
+    "document": { "zarr_format": 2 },
+    "problems": [
+      { "loc": ["chunks"], "kind": "missing_key" },
+      { "loc": ["compressor"], "kind": "missing_key" },
+      { "loc": ["dtype"], "kind": "missing_key" },
+      { "loc": ["fill_value"], "kind": "missing_key" },
+      { "loc": ["filters"], "kind": "missing_key" },
+      { "loc": ["order"], "kind": "missing_key" },
+      { "loc": ["shape"], "kind": "missing_key" }
+    ]
+  },
+  {
+    "description": "unexpected member in the closed v2 document",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null,
+      "node_type": "array"
+    },
+    "problems": [{ "loc": ["node_type"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "invalid order and dimension_separator values",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "Q",
+      "filters": null,
+      "dimension_separator": "-"
+    },
+    "problems": [
+      { "loc": ["order"], "kind": "invalid_value" },
+      { "loc": ["dimension_separator"], "kind": "invalid_value" }
+    ]
+  },
+  {
+    "description": "compressor without a string id",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": { "level": 1 },
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [{ "loc": ["compressor"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "empty filters list (null is the spelling for no filters)",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": []
+    },
+    "problems": [{ "loc": ["filters"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "filters entry without a string id",
+    "document": {
+      "zarr_format": 2,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": [{ "id": "delta" }, { "no_id": 1 }]
+    },
+    "problems": [{ "loc": ["filters"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "dtype that is neither a string nor field records",
+    "document": {
+      "zarr_format": 2,
+      "shape": [10],
+      "chunks": [10],
+      "dtype": [["a"]],
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [{ "loc": ["dtype"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "non-integer shape entries and a negative chunk dimension",
+    "document": {
+      "zarr_format": 2,
+      "shape": ["a"],
+      "chunks": [-1],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      { "loc": ["shape"], "kind": "invalid_type" },
+      { "loc": ["chunks"], "kind": "invalid_value" }
+    ]
+  },
+  {
+    "description": "v3 zarr_format in a v2 document",
+    "document": {
+      "zarr_format": 3,
+      "shape": [100],
+      "chunks": [10],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [{ "loc": ["zarr_format"], "kind": "invalid_value" }]
+  }
+]

@@ -1,0 +1,261 @@
+[
+  {
+    "description": "minimal valid array with bare-string extension points",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10, 10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5, 5] } },
+      "chunk_key_encoding": { "name": "default" },
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": []
+  },
+  {
+    "description": "valid array with every optional member and an ignorable extension field",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [100, 200],
+      "data_type": { "name": "int32" },
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [10, 20] } },
+      "chunk_key_encoding": { "name": "default", "configuration": { "separator": "/" } },
+      "fill_value": null,
+      "codecs": [
+        { "name": "transpose", "configuration": { "order": [1, 0] } },
+        { "name": "bytes", "configuration": { "endian": "little" } },
+        { "name": "gzip", "configuration": { "level": 5 } }
+      ],
+      "attributes": { "units": "meters", "nested": { "a": [1, 2, 3] } },
+      "storage_transformers": [],
+      "dimension_names": ["y", null],
+      "custom:field": { "must_understand": false, "payload": [1, 2] }
+    },
+    "problems": []
+  },
+  {
+    "description": "valid array with a sharding_indexed codec",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [64, 64],
+      "data_type": "uint8",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [32, 32] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [16, 16],
+            "codecs": ["bytes", { "name": "zstd", "configuration": { "level": 3, "checksum": false } }],
+            "index_codecs": ["bytes", "crc32c"],
+            "index_location": "end"
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "document that is not an object",
+    "document": [1, 2, 3],
+    "problems": [{ "loc": [], "kind": "invalid_type" }]
+  },
+  {
+    "description": "every required key missing",
+    "document": { "zarr_format": 3, "node_type": "array" },
+    "problems": [
+      { "loc": ["chunk_grid"], "kind": "missing_key" },
+      { "loc": ["chunk_key_encoding"], "kind": "missing_key" },
+      { "loc": ["codecs"], "kind": "missing_key" },
+      { "loc": ["data_type"], "kind": "missing_key" },
+      { "loc": ["fill_value"], "kind": "missing_key" },
+      { "loc": ["shape"], "kind": "missing_key" }
+    ]
+  },
+  {
+    "description": "wrong zarr_format and node_type literals",
+    "document": {
+      "zarr_format": 2,
+      "node_type": "Array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [
+      { "loc": ["zarr_format"], "kind": "invalid_value" },
+      { "loc": ["node_type"], "kind": "invalid_value" }
+    ]
+  },
+  {
+    "description": "negative dimension in shape",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10, -1],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5, 5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [{ "loc": ["shape"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "non-integer entry in shape",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10, "10"],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5, 5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [{ "loc": ["shape"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "empty codec pipeline",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": []
+    },
+    "problems": [{ "loc": ["codecs"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "codec entries: a number and an object missing its name",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [42, { "configuration": {} }]
+    },
+    "problems": [
+      { "loc": ["codecs", 0], "kind": "invalid_type" },
+      { "loc": ["codecs", 1, "name"], "kind": "invalid_type" }
+    ]
+  },
+  {
+    "description": "must_understand: false is rejected at the data_type extension point",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": { "name": "float64", "must_understand": false },
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [{ "loc": ["data_type", "must_understand"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "unexpected member inside a metadata field object",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": { "chunk_shape": [5] },
+        "extra": 1
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [{ "loc": ["chunk_grid", "extra"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "metadata field configuration that is not an object",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": { "name": "float64", "configuration": "nope" },
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"]
+    },
+    "problems": [{ "loc": ["data_type", "configuration"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "dimension_names length disagrees with shape",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10, 20],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5, 5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"],
+      "dimension_names": ["x"]
+    },
+    "problems": [{ "loc": ["dimension_names"], "kind": "invalid_value" }]
+  },
+  {
+    "description": "dimension_names entries that are neither string nor null",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10, 20],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5, 5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"],
+      "dimension_names": [1, 2]
+    },
+    "problems": [{ "loc": ["dimension_names"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "attributes that is not an object",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"],
+      "attributes": ["not", "a", "mapping"]
+    },
+    "problems": [{ "loc": ["attributes"], "kind": "invalid_type" }]
+  },
+  {
+    "description": "storage_transformers that is not a sequence",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [10],
+      "data_type": "float64",
+      "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": ["bytes"],
+      "storage_transformers": "bad"
+    },
+    "problems": [{ "loc": ["storage_transformers"], "kind": "invalid_type" }]
+  }
+]

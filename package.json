@@ -1,0 +1,12 @@
+{
+  "name": "zarr-metadata-ts",
+  "private": true,
+  "workspaces": [
+    "packages/zarr-metadata-ts",
+    "packages/extension"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace zarr-metadata"
+  }
+}
