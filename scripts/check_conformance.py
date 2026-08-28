@@ -3,7 +3,7 @@
 The corpus (conformance/*.json) is the contract between the Python
 `zarr-metadata` package and the TypeScript port; this script verifies the
 Python side. The TypeScript side runs the same corpus via vitest
-(packages/zarr-metadata-ts/test/conformance.test.ts).
+(test/conformance.test.ts).
 
 Usage (with zarr-metadata importable, e.g. installed or via `uv run --with`):
 

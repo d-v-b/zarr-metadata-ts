@@ -41,6 +41,6 @@ cases:
 
 ## Runners
 
-- TypeScript: `packages/zarr-metadata-ts/test/conformance.test.ts` (vitest).
+- TypeScript: `test/conformance.test.ts` (vitest).
 - Python: `scripts/check_conformance.py` (run against an installed or local
   `zarr-metadata`).

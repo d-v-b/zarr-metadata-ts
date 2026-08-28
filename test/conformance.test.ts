@@ -1,5 +1,5 @@
 /**
- * Runs the shared conformance corpus (../../../conformance) against the
+ * Runs the shared conformance corpus (../conformance) against the
  * TypeScript validators. The same corpus runs against the Python reference
  * implementation via scripts/check_conformance.py.
  */
@@ -17,7 +17,7 @@ import {
   type ValidationProblem,
 } from "../src/index.js";
 
-const CORPUS_DIR = fileURLToPath(new URL("../../../conformance/", import.meta.url));
+const CORPUS_DIR = fileURLToPath(new URL("../conformance/", import.meta.url));
 
 const VALIDATORS: Record<string, (value: unknown) => ValidationProblem[]> = {
   v3_array: validateArrayMetadataV3,
