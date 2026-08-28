@@ -5,6 +5,7 @@
  */
 
 import type { JSONValue } from "./common.js";
+import { exactKeys, type OptionalKeysOf, type RequiredKeysOf } from "./keys.js";
 
 /**
  * The v2 dtype representation.
@@ -97,7 +98,7 @@ export const ZARR_V2_ATTRIBUTES_STORE_KEY = ".zattrs";
 export const ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY = ".zmetadata";
 
 /** The standard top-level keys of a merged v2 array metadata document. */
-export const ARRAY_METADATA_REQUIRED_KEYS_V2 = [
+export const ARRAY_METADATA_REQUIRED_KEYS_V2 = exactKeys<RequiredKeysOf<ZarrV2ArrayMetadataJSON>>()([
   "zarr_format",
   "shape",
   "chunks",
@@ -106,19 +107,19 @@ export const ARRAY_METADATA_REQUIRED_KEYS_V2 = [
   "fill_value",
   "order",
   "filters",
-] as const;
-export const ARRAY_METADATA_OPTIONAL_KEYS_V2 = [
+]);
+export const ARRAY_METADATA_OPTIONAL_KEYS_V2 = exactKeys<OptionalKeysOf<ZarrV2ArrayMetadataJSON>>()([
   "dimension_separator",
   "attributes",
-] as const;
+]);
 export const ARRAY_METADATA_STANDARD_KEYS_V2 = [
   ...ARRAY_METADATA_REQUIRED_KEYS_V2,
   ...ARRAY_METADATA_OPTIONAL_KEYS_V2,
 ] as const;
 
 /** The standard top-level keys of a merged v2 group metadata document. */
-export const GROUP_METADATA_REQUIRED_KEYS_V2 = ["zarr_format"] as const;
-export const GROUP_METADATA_OPTIONAL_KEYS_V2 = ["attributes"] as const;
+export const GROUP_METADATA_REQUIRED_KEYS_V2 = exactKeys<RequiredKeysOf<ZarrV2GroupMetadataJSON>>()(["zarr_format"]);
+export const GROUP_METADATA_OPTIONAL_KEYS_V2 = exactKeys<OptionalKeysOf<ZarrV2GroupMetadataJSON>>()(["attributes"]);
 export const GROUP_METADATA_STANDARD_KEYS_V2 = [
   ...GROUP_METADATA_REQUIRED_KEYS_V2,
   ...GROUP_METADATA_OPTIONAL_KEYS_V2,

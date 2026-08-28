@@ -5,6 +5,7 @@
  */
 
 import type { JSONValue, ZarrV3MetadataFieldJSON } from "./common.js";
+import { exactKeys, type OptionalKeysOf, type RequiredKeysOf } from "./keys.js";
 
 /**
  * The JSON value of an unknown top-level v3 metadata field.
@@ -73,7 +74,7 @@ export const ZARR_V3_METADATA_STORE_KEY = "zarr.json";
 export const ZARR_V3_CONSOLIDATED_METADATA_KEY = "consolidated_metadata";
 
 /** The standard top-level keys of a v3 array metadata document. */
-export const ARRAY_METADATA_REQUIRED_KEYS_V3 = [
+export const ARRAY_METADATA_REQUIRED_KEYS_V3 = exactKeys<RequiredKeysOf<ZarrV3ArrayMetadataJSON>>()([
   "zarr_format",
   "node_type",
   "data_type",
@@ -82,23 +83,23 @@ export const ARRAY_METADATA_REQUIRED_KEYS_V3 = [
   "chunk_key_encoding",
   "fill_value",
   "codecs",
-] as const;
-export const ARRAY_METADATA_OPTIONAL_KEYS_V3 = [
+]);
+export const ARRAY_METADATA_OPTIONAL_KEYS_V3 = exactKeys<OptionalKeysOf<ZarrV3ArrayMetadataJSON>>()([
   "attributes",
   "storage_transformers",
   "dimension_names",
-] as const;
+]);
 export const ARRAY_METADATA_STANDARD_KEYS_V3 = [
   ...ARRAY_METADATA_REQUIRED_KEYS_V3,
   ...ARRAY_METADATA_OPTIONAL_KEYS_V3,
 ] as const;
 
 /** The standard top-level keys of a v3 group metadata document. */
-export const GROUP_METADATA_REQUIRED_KEYS_V3 = [
+export const GROUP_METADATA_REQUIRED_KEYS_V3 = exactKeys<RequiredKeysOf<ZarrV3GroupMetadataJSON>>()([
   "zarr_format",
   "node_type",
-] as const;
-export const GROUP_METADATA_OPTIONAL_KEYS_V3 = ["attributes"] as const;
+]);
+export const GROUP_METADATA_OPTIONAL_KEYS_V3 = exactKeys<OptionalKeysOf<ZarrV3GroupMetadataJSON>>()(["attributes"]);
 export const GROUP_METADATA_STANDARD_KEYS_V3 = [
   ...GROUP_METADATA_REQUIRED_KEYS_V3,
   ...GROUP_METADATA_OPTIONAL_KEYS_V3,
