@@ -1,0 +1,171 @@
+/**
+ * Tests for behavior the conformance corpus cannot express because its
+ * fixtures must be JSON text: hostile runtime values (depth bombs, cycles,
+ * BigInt, non-plain objects) and the byte-level store entry points.
+ */
+import { describe, expect, it } from "vitest";
+
+import {
+  dumpStoreJson,
+  isArrayMetadataV3,
+  isGroupMetadataV3,
+  isJson,
+  loadStoreJson,
+  MAX_JSON_DEPTH,
+  MetadataValidationError,
+  parseJson,
+  validateArrayMetadataV2,
+  validateArrayMetadataV3,
+  validateJson,
+} from "../src/index.js";
+
+const VALID_ARRAY = {
+  zarr_format: 3,
+  node_type: "array",
+  shape: [10],
+  data_type: "float64",
+  chunk_grid: { name: "regular", configuration: { chunk_shape: [5] } },
+  chunk_key_encoding: "default",
+  fill_value: 0,
+  codecs: ["bytes"],
+};
+
+function nest(depth: number): unknown {
+  let value: unknown = 1;
+  for (let i = 0; i < depth; i++) value = [value];
+  return value;
+}
+
+describe("nesting depth cap", () => {
+  it("accepts documents up to MAX_JSON_DEPTH and reports beyond it", () => {
+    expect(validateJson(nest(MAX_JSON_DEPTH))).toEqual([]);
+    const problems = validateJson(nest(MAX_JSON_DEPTH + 1));
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.kind).toBe("invalid_value");
+    expect(problems[0]!.message).toContain("nesting depth");
+  });
+
+  it("keeps guards total on depth bombs that JSON.parse accepts", () => {
+    const deep = JSON.parse(
+      `{"zarr_format":3,"node_type":"group","attributes":{"x":${"[".repeat(3000)}1${"]".repeat(3000)}}}`,
+    );
+    expect(isGroupMetadataV3(deep)).toBe(false);
+  });
+
+  it("terminates on circular object graphs instead of overflowing", () => {
+    const cycle: Record<string, unknown> = {};
+    cycle["self"] = cycle;
+    expect(isJson(cycle)).toBe(false);
+    const arrayCycle: unknown[] = [];
+    arrayCycle.push(arrayCycle);
+    expect(isJson(arrayCycle)).toBe(false);
+  });
+
+  it("caps the independent dtype recursion route", () => {
+    let dtype: unknown = "<i4";
+    for (let i = 0; i < 200; i++) dtype = [["f", dtype]];
+    const problems = validateArrayMetadataV2({
+      zarr_format: 2,
+      shape: [1],
+      chunks: [1],
+      dtype,
+      compressor: null,
+      fill_value: 0,
+      order: "C",
+      filters: null,
+    });
+    expect(problems).toEqual([
+      {
+        loc: ["dtype"],
+        message: "expected a v2 dtype string or a sequence of field records",
+        kind: "invalid_type",
+      },
+    ]);
+  });
+});
+
+describe("non-plain objects are not mappings", () => {
+  it("rejects Date/Map/Set/class instances as non-JSON", () => {
+    expect(isJson(new Date())).toBe(false);
+    expect(isJson(new Map([["a", 1]]))).toBe(false);
+    expect(isJson(new Set([1]))).toBe(false);
+    class Thing {}
+    expect(isJson(new Thing())).toBe(false);
+    expect(() => parseJson(new Map())).toThrow(MetadataValidationError);
+  });
+
+  it("still accepts null-prototype objects (legitimate map-likes)", () => {
+    const doc = Object.assign(Object.create(null) as Record<string, unknown>, { a: 1 });
+    expect(isJson(doc)).toBe(true);
+  });
+
+  it("reports a single root invalid_type for a non-mapping document, like Python", () => {
+    expect(validateArrayMetadataV2(new Date())).toEqual([
+      { loc: [], message: "expected a mapping", kind: "invalid_type" },
+    ]);
+  });
+
+  it("rejects a Date in attributes instead of validating it as empty", () => {
+    const problems = validateArrayMetadataV3({ ...VALID_ARRAY, attributes: new Date() });
+    expect(problems).toEqual([
+      { loc: ["attributes"], message: "expected a mapping with string keys", kind: "invalid_type" },
+    ]);
+  });
+});
+
+describe("BigInt", () => {
+  it("is reported as non-JSON instead of crashing the renderer", () => {
+    expect(isJson(1n)).toBe(false);
+    const problems = validateJson({ a: 1n });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.loc).toEqual(["a"]);
+    expect(problems[0]!.kind).toBe("invalid_type");
+    expect(problems[0]!.message).toContain("1n");
+  });
+});
+
+describe("loadStoreJson", () => {
+  const zarrJson = JSON.stringify(VALID_ARRAY);
+
+  it("decodes text and bytes from plain-object and Map stores", () => {
+    expect(loadStoreJson({ "zarr.json": zarrJson }, "zarr.json")).toEqual(VALID_ARRAY);
+    const bytes = new TextEncoder().encode(zarrJson);
+    expect(loadStoreJson(new Map([["zarr.json", bytes]]), "zarr.json")).toEqual(VALID_ARRAY);
+  });
+
+  it("reports a missing store key as missing_key at the key", () => {
+    expect.assertions(2);
+    try {
+      loadStoreJson({}, "zarr.json");
+    } catch (error) {
+      expect(error).toBeInstanceOf(MetadataValidationError);
+      expect((error as MetadataValidationError).problems).toEqual([
+        { loc: ["zarr.json"], message: "missing store key", kind: "missing_key" },
+      ]);
+    }
+  });
+
+  it("reports malformed JSON, invalid UTF-8, and non-standard constants as invalid_json", () => {
+    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "NaN"]) {
+      let kind: string | undefined;
+      try {
+        loadStoreJson({ key: raw }, "key");
+      } catch (error) {
+        kind = (error as MetadataValidationError).problems[0]?.kind;
+      }
+      expect(kind).toBe("invalid_json");
+    }
+  });
+});
+
+describe("dumpStoreJson", () => {
+  it("round-trips through loadStoreJson", () => {
+    const bytes = dumpStoreJson(VALID_ARRAY, { indent: 2 });
+    expect(loadStoreJson({ "zarr.json": bytes }, "zarr.json")).toEqual(VALID_ARRAY);
+  });
+
+  it("throws on non-JSON values instead of silently writing null", () => {
+    expect(() => dumpStoreJson({ fill_value: NaN })).toThrow(MetadataValidationError);
+    expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
+  });
+});

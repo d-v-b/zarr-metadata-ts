@@ -1,7 +1,10 @@
 [
   {
     "description": "minimal valid group",
-    "document": { "zarr_format": 3, "node_type": "group" },
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group"
+    },
     "problems": []
   },
   {
@@ -9,8 +12,19 @@
     "document": {
       "zarr_format": 3,
       "node_type": "group",
-      "attributes": { "title": "my hierarchy", "nested": { "a": [1, null, "x"] } },
-      "custom:field": { "must_understand": false }
+      "attributes": {
+        "title": "my hierarchy",
+        "nested": {
+          "a": [
+            1,
+            null,
+            "x"
+          ]
+        }
+      },
+      "custom:field": {
+        "must_understand": false
+      }
     },
     "problems": []
   },
@@ -26,14 +40,28 @@
           "child_array": {
             "zarr_format": 3,
             "node_type": "array",
-            "shape": [10],
+            "shape": [
+              10
+            ],
             "data_type": "float64",
-            "chunk_grid": { "name": "regular", "configuration": { "chunk_shape": [5] } },
+            "chunk_grid": {
+              "name": "regular",
+              "configuration": {
+                "chunk_shape": [
+                  5
+                ]
+              }
+            },
             "chunk_key_encoding": "default",
             "fill_value": 0,
-            "codecs": ["bytes"]
+            "codecs": [
+              "bytes"
+            ]
           },
-          "child_group": { "zarr_format": 3, "node_type": "group" }
+          "child_group": {
+            "zarr_format": 3,
+            "node_type": "group"
+          }
         }
       }
     },
@@ -41,18 +69,41 @@
   },
   {
     "description": "consolidated_metadata: null (historical zarr-python bug) is structurally accepted",
-    "document": { "zarr_format": 3, "node_type": "group", "consolidated_metadata": null },
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": null
+    },
     "problems": []
   },
   {
     "description": "missing node_type",
-    "document": { "zarr_format": 3 },
-    "problems": [{ "loc": ["node_type"], "kind": "missing_key" }]
+    "document": {
+      "zarr_format": 3
+    },
+    "problems": [
+      {
+        "loc": [
+          "node_type"
+        ],
+        "kind": "missing_key"
+      }
+    ]
   },
   {
     "description": "array node_type in a group document",
-    "document": { "zarr_format": 3, "node_type": "array" },
-    "problems": [{ "loc": ["node_type"], "kind": "invalid_value" }]
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array"
+    },
+    "problems": [
+      {
+        "loc": [
+          "node_type"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   },
   {
     "description": "consolidated envelope with wrong kind and must_understand",
@@ -66,8 +117,20 @@
       }
     },
     "problems": [
-      { "loc": ["consolidated_metadata", "kind"], "kind": "invalid_value" },
-      { "loc": ["consolidated_metadata", "must_understand"], "kind": "invalid_value" }
+      {
+        "loc": [
+          "consolidated_metadata",
+          "kind"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "must_understand"
+        ],
+        "kind": "invalid_value"
+      }
     ]
   },
   {
@@ -78,11 +141,23 @@
       "consolidated_metadata": {
         "kind": "inline",
         "must_understand": false,
-        "metadata": { "a": { "zarr_format": 3 } }
+        "metadata": {
+          "a": {
+            "zarr_format": 3
+          }
+        }
       }
     },
     "problems": [
-      { "loc": ["consolidated_metadata", "metadata", "a", "node_type"], "kind": "invalid_value" }
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "a",
+          "node_type"
+        ],
+        "kind": "invalid_value"
+      }
     ]
   },
   {
@@ -93,21 +168,156 @@
       "consolidated_metadata": {
         "kind": "inline",
         "must_understand": false,
-        "metadata": { "arr": { "zarr_format": 3, "node_type": "array" } }
+        "metadata": {
+          "arr": {
+            "zarr_format": 3,
+            "node_type": "array"
+          }
+        }
       }
     },
     "problems": [
-      { "loc": ["consolidated_metadata", "metadata", "arr", "chunk_grid"], "kind": "missing_key" },
-      { "loc": ["consolidated_metadata", "metadata", "arr", "chunk_key_encoding"], "kind": "missing_key" },
-      { "loc": ["consolidated_metadata", "metadata", "arr", "codecs"], "kind": "missing_key" },
-      { "loc": ["consolidated_metadata", "metadata", "arr", "data_type"], "kind": "missing_key" },
-      { "loc": ["consolidated_metadata", "metadata", "arr", "fill_value"], "kind": "missing_key" },
-      { "loc": ["consolidated_metadata", "metadata", "arr", "shape"], "kind": "missing_key" }
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "chunk_grid"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "chunk_key_encoding"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "codecs"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "data_type"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "fill_value"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "arr",
+          "shape"
+        ],
+        "kind": "missing_key"
+      }
     ]
   },
   {
     "description": "attributes that is not an object",
-    "document": { "zarr_format": 3, "node_type": "group", "attributes": 5 },
-    "problems": [{ "loc": ["attributes"], "kind": "invalid_type" }]
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "attributes": 5
+    },
+    "problems": [
+      {
+        "loc": [
+          "attributes"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "consolidated envelope that is not a mapping",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": []
+    },
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "consolidated envelope missing must_understand and metadata",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "inline"
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata",
+          "must_understand"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "consolidated envelope with an unexpected member and a non-mapping metadata",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "inline",
+        "must_understand": false,
+        "metadata": 5,
+        "extra": 1
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata",
+          "extra"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
   }
 ]

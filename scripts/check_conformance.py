@@ -67,6 +67,16 @@ def main() -> int:
     total = 0
     for kind, validator in VALIDATORS.items():
         cases = json.loads((CORPUS_DIR / f"{kind}.json").read_text())
+        # The corpus is the cross-language contract; a truncated fixture file
+        # must fail loudly, not weaken the contract silently.
+        valid_count = sum(1 for case in cases if not case["problems"])
+        invalid_count = len(cases) - valid_count
+        if valid_count == 0 or invalid_count == 0:
+            failures += 1
+            print(
+                f"FAIL [{kind}] corpus must hold at least one valid and one invalid case "
+                f"(valid={valid_count}, invalid={invalid_count})"
+            )
         for case in cases:
             total += 1
             expected = canonical(

@@ -4,40 +4,105 @@
     "document": {
       "zarr_consolidated_format": 1,
       "metadata": {
-        ".zgroup": { "zarr_format": 2 },
+        ".zgroup": {
+          "zarr_format": 2
+        },
         "a/.zarray": {
           "zarr_format": 2,
-          "shape": [100],
-          "chunks": [10],
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
           "dtype": "<f8",
           "compressor": null,
           "fill_value": 0,
           "order": "C",
           "filters": null
         },
-        "a/.zattrs": { "units": "meters" }
+        "a/.zattrs": {
+          "units": "meters"
+        }
       }
     },
     "problems": []
   },
   {
     "description": "missing metadata map",
-    "document": { "zarr_consolidated_format": 1 },
-    "problems": [{ "loc": ["metadata"], "kind": "missing_key" }]
+    "document": {
+      "zarr_consolidated_format": 1
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata"
+        ],
+        "kind": "missing_key"
+      }
+    ]
   },
   {
     "description": "unsupported consolidated format version",
-    "document": { "zarr_consolidated_format": 2, "metadata": {} },
-    "problems": [{ "loc": ["zarr_consolidated_format"], "kind": "invalid_value" }]
+    "document": {
+      "zarr_consolidated_format": 2,
+      "metadata": {}
+    },
+    "problems": [
+      {
+        "loc": [
+          "zarr_consolidated_format"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   },
   {
     "description": "unexpected top-level member",
-    "document": { "zarr_consolidated_format": 1, "metadata": {}, "extra": true },
-    "problems": [{ "loc": ["extra"], "kind": "invalid_value" }]
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {},
+      "extra": true
+    },
+    "problems": [
+      {
+        "loc": [
+          "extra"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   },
   {
     "description": "metadata that is not an object",
-    "document": { "zarr_consolidated_format": 1, "metadata": [1] },
-    "problems": [{ "loc": ["metadata"], "kind": "invalid_type" }]
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": [
+        1
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "boolean consolidated format version (bool is not the integer 1)",
+    "document": {
+      "zarr_consolidated_format": true,
+      "metadata": {}
+    },
+    "problems": [
+      {
+        "loc": [
+          "zarr_consolidated_format"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   }
 ]

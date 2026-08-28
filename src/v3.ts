@@ -35,7 +35,7 @@ export type ZarrV3ArrayMetadataJSON = {
   attributes?: { [key: string]: JSONValue };
   storage_transformers?: ZarrV3MetadataFieldJSON[];
   dimension_names?: (string | null)[];
-} & { [key: string]: JSONValue | undefined };
+} & { [key: string]: JSONValue };
 
 /**
  * Zarr v3 group metadata document (the `zarr.json` content for a group).
@@ -48,7 +48,7 @@ export type ZarrV3GroupMetadataJSON = {
   zarr_format: 3;
   node_type: "group";
   attributes?: { [key: string]: JSONValue };
-} & { [key: string]: JSONValue | undefined };
+} & { [key: string]: JSONValue };
 
 /**
  * Inline consolidated metadata embedded in a v3 group.

@@ -58,6 +58,12 @@ for (const kind of kinds) {
     const cases: ConformanceCase[] = JSON.parse(
       readFileSync(join(CORPUS_DIR, `${kind}.json`), "utf-8"),
     );
+    // The corpus is the cross-language contract; a truncated fixture file
+    // must fail loudly, not weaken the contract silently.
+    it("holds at least one valid and one invalid case", () => {
+      expect(cases.some((c) => c.problems.length === 0)).toBe(true);
+      expect(cases.some((c) => c.problems.length > 0)).toBe(true);
+    });
     for (const testCase of cases) {
       it(testCase.description, () => {
         const actual = validator(testCase.document);

@@ -36,7 +36,7 @@ export type ZarrV2ArrayDimensionSeparator = (typeof ZARR_V2_ARRAY_DIMENSION_SEPA
  * The required `id` field names the codec; codec-specific parameters
  * (e.g. `cname`, `clevel` for blosc) appear as extra fields.
  */
-export type ZarrV2CodecMetadata = { id: string } & { [key: string]: JSONValue | undefined };
+export type ZarrV2CodecMetadata = { id: string } & { [key: string]: JSONValue };
 
 /**
  * On-disk `.zarray` file content.
