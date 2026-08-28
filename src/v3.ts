@@ -73,7 +73,7 @@ export const ZARR_V3_METADATA_STORE_KEY = "zarr.json";
 export const ZARR_V3_CONSOLIDATED_METADATA_KEY = "consolidated_metadata";
 
 /** The standard top-level keys of a v3 array metadata document. */
-export const ARRAY_METADATA_REQUIRED_KEYS_V3: ReadonlyArray<string> = [
+export const ARRAY_METADATA_REQUIRED_KEYS_V3 = [
   "zarr_format",
   "node_type",
   "data_type",
@@ -82,24 +82,24 @@ export const ARRAY_METADATA_REQUIRED_KEYS_V3: ReadonlyArray<string> = [
   "chunk_key_encoding",
   "fill_value",
   "codecs",
-];
-export const ARRAY_METADATA_OPTIONAL_KEYS_V3: ReadonlyArray<string> = [
+] as const;
+export const ARRAY_METADATA_OPTIONAL_KEYS_V3 = [
   "attributes",
   "storage_transformers",
   "dimension_names",
-];
-export const ARRAY_METADATA_STANDARD_KEYS_V3: ReadonlyArray<string> = [
+] as const;
+export const ARRAY_METADATA_STANDARD_KEYS_V3 = [
   ...ARRAY_METADATA_REQUIRED_KEYS_V3,
   ...ARRAY_METADATA_OPTIONAL_KEYS_V3,
-];
+] as const;
 
 /** The standard top-level keys of a v3 group metadata document. */
-export const GROUP_METADATA_REQUIRED_KEYS_V3: ReadonlyArray<string> = [
+export const GROUP_METADATA_REQUIRED_KEYS_V3 = [
   "zarr_format",
   "node_type",
-];
-export const GROUP_METADATA_OPTIONAL_KEYS_V3: ReadonlyArray<string> = ["attributes"];
-export const GROUP_METADATA_STANDARD_KEYS_V3: ReadonlyArray<string> = [
+] as const;
+export const GROUP_METADATA_OPTIONAL_KEYS_V3 = ["attributes"] as const;
+export const GROUP_METADATA_STANDARD_KEYS_V3 = [
   ...GROUP_METADATA_REQUIRED_KEYS_V3,
   ...GROUP_METADATA_OPTIONAL_KEYS_V3,
-];
+] as const;

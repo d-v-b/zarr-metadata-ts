@@ -27,6 +27,8 @@ import {
 } from "./problems.js";
 import {
   ARRAY_METADATA_REQUIRED_KEYS_V2,
+  ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
+  ZARR_V2_ARRAY_ORDER,
   ARRAY_METADATA_STANDARD_KEYS_V2,
   GROUP_METADATA_REQUIRED_KEYS_V2,
   GROUP_METADATA_STANDARD_KEYS_V2,
@@ -523,7 +525,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
       problem(["dtype"], "expected a v2 dtype string or a sequence of field records", "invalid_type"),
     );
   }
-  if ("order" in doc && doc["order"] !== "C" && doc["order"] !== "F") {
+  if ("order" in doc && !(ZARR_V2_ARRAY_ORDER as readonly unknown[]).includes(doc["order"])) {
     problems.push(
       problem(["order"], `expected 'C' or 'F', got ${show(doc["order"])}`, "invalid_value"),
     );
@@ -552,8 +554,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
   }
   if (
     "dimension_separator" in doc &&
-    doc["dimension_separator"] !== "." &&
-    doc["dimension_separator"] !== "/"
+    !(ZARR_V2_ARRAY_DIMENSION_SEPARATOR as readonly unknown[]).includes(doc["dimension_separator"])
   ) {
     problems.push(
       problem(

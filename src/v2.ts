@@ -22,13 +22,12 @@ export type ZarrV2DataTypeMetadata =
   | Array<[string, ZarrV2DataTypeMetadata] | [string, ZarrV2DataTypeMetadata, number[]]>;
 
 /** `"C"` (row-major) or `"F"` (column-major) — the in-chunk byte layout. */
-export type ZarrV2ArrayOrder = "C" | "F";
-export const ZARR_V2_ARRAY_ORDER: ReadonlyArray<ZarrV2ArrayOrder> = ["C", "F"];
+export const ZARR_V2_ARRAY_ORDER = ["C", "F"] as const;
+export type ZarrV2ArrayOrder = (typeof ZARR_V2_ARRAY_ORDER)[number];
 
 /** `"."` (legacy default) or `"/"` (nested directories). */
-export type ZarrV2ArrayDimensionSeparator = "." | "/";
-export const ZARR_V2_ARRAY_DIMENSION_SEPARATOR: ReadonlyArray<ZarrV2ArrayDimensionSeparator> =
-  [".", "/"];
+export const ZARR_V2_ARRAY_DIMENSION_SEPARATOR = [".", "/"] as const;
+export type ZarrV2ArrayDimensionSeparator = (typeof ZARR_V2_ARRAY_DIMENSION_SEPARATOR)[number];
 
 /**
  * A numcodecs configuration object, used as a v2 compressor or filter.
@@ -98,7 +97,7 @@ export const ZARR_V2_ATTRIBUTES_STORE_KEY = ".zattrs";
 export const ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY = ".zmetadata";
 
 /** The standard top-level keys of a merged v2 array metadata document. */
-export const ARRAY_METADATA_REQUIRED_KEYS_V2: ReadonlyArray<string> = [
+export const ARRAY_METADATA_REQUIRED_KEYS_V2 = [
   "zarr_format",
   "shape",
   "chunks",
@@ -107,20 +106,20 @@ export const ARRAY_METADATA_REQUIRED_KEYS_V2: ReadonlyArray<string> = [
   "fill_value",
   "order",
   "filters",
-];
-export const ARRAY_METADATA_OPTIONAL_KEYS_V2: ReadonlyArray<string> = [
+] as const;
+export const ARRAY_METADATA_OPTIONAL_KEYS_V2 = [
   "dimension_separator",
   "attributes",
-];
-export const ARRAY_METADATA_STANDARD_KEYS_V2: ReadonlyArray<string> = [
+] as const;
+export const ARRAY_METADATA_STANDARD_KEYS_V2 = [
   ...ARRAY_METADATA_REQUIRED_KEYS_V2,
   ...ARRAY_METADATA_OPTIONAL_KEYS_V2,
-];
+] as const;
 
 /** The standard top-level keys of a merged v2 group metadata document. */
-export const GROUP_METADATA_REQUIRED_KEYS_V2: ReadonlyArray<string> = ["zarr_format"];
-export const GROUP_METADATA_OPTIONAL_KEYS_V2: ReadonlyArray<string> = ["attributes"];
-export const GROUP_METADATA_STANDARD_KEYS_V2: ReadonlyArray<string> = [
+export const GROUP_METADATA_REQUIRED_KEYS_V2 = ["zarr_format"] as const;
+export const GROUP_METADATA_OPTIONAL_KEYS_V2 = ["attributes"] as const;
+export const GROUP_METADATA_STANDARD_KEYS_V2 = [
   ...GROUP_METADATA_REQUIRED_KEYS_V2,
   ...GROUP_METADATA_OPTIONAL_KEYS_V2,
-];
+] as const;
