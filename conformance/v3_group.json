@@ -319,5 +319,50 @@
         "kind": "invalid_type"
       }
     ]
+  },
+  {
+    "description": "invalid group entry inside consolidated metadata (nested loc prefixing)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": "wrong",
+        "must_understand": false,
+        "metadata": {
+          "g": {
+            "zarr_format": 2,
+            "node_type": "group",
+            "attributes": 5
+          }
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata",
+          "kind"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "g",
+          "zarr_format"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "consolidated_metadata",
+          "metadata",
+          "g",
+          "attributes"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
   }
 ]

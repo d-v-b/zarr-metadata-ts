@@ -66,6 +66,13 @@ for (const kind of kinds) {
     });
     for (const testCase of cases) {
       it(testCase.description, () => {
+        // A fixture missing its document would hand `undefined` to the
+        // validator, whose root invalid_type problem matches the expectation
+        // of every "document that is not an object" case — assert the
+        // fixture's shape so a malformed case fails loudly (the Python
+        // runner gets this via KeyError).
+        expect(Object.hasOwn(testCase, "document")).toBe(true);
+        expect(Array.isArray(testCase.problems)).toBe(true);
         const actual = validator(testCase.document);
         expect(canonical(actual)).toEqual(canonical(testCase.problems));
       });

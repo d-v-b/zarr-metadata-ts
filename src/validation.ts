@@ -17,17 +17,24 @@
  *   spelling. The shared conformance corpus avoids fixtures that hinge on
  *   this distinction.
  *
- * Two behaviors are deliberate TS-side hardening divergences (for
- * `JSON.parse` output they are unobservable, so corpus parity holds; the
- * corpus contains no fixtures for either):
+ * Three behaviors are deliberate TS-side hardening divergences:
  *
  * - a "mapping" means a plain object (prototype `null` or
  *   `Object.prototype`). Python accepts any `Mapping`; here `Date`, `Map`,
  *   `Set`, and class instances are rejected as non-JSON rather than
- *   validated as empty objects and mis-serialized later;
- * - containers nested deeper than `MAX_JSON_DEPTH` are reported as a
- *   problem instead of overflowing the stack (Python's validators recurse
- *   unboundedly and raise `RecursionError` on the same inputs).
+ *   validated as empty objects and mis-serialized later. Unobservable for
+ *   `JSON.parse` output;
+ * - an array must be dense with index-only own properties: holes (which
+ *   `every`/`forEach` would silently skip) and extra own properties like a
+ *   `toJSON` method (which `JSON.stringify` would honor, serializing
+ *   something other than what was validated) are rejected. Unobservable
+ *   for `JSON.parse` output;
+ * - containers (and the group ↔ consolidated-metadata document recursion)
+ *   nested deeper than `MAX_JSON_DEPTH` are reported as a problem instead
+ *   of overflowing the stack. This one IS observable for JSON text —
+ *   `JSON.parse` accepts documents nested past the cap, where Python
+ *   reports no problem (or raises `RecursionError` far deeper) — so the
+ *   corpus must never contain fixtures that exceed the cap.
  */
 
 import type { JSONValue, ZarrV3MetadataFieldJSON } from "./common.js";
@@ -87,6 +94,22 @@ function has(doc: Record<string, unknown>, key: string): boolean {
   return Object.hasOwn(doc, key);
 }
 
+/**
+ * Whether `value` is a dense array whose own enumerable keys are exactly its
+ * indices.
+ *
+ * The array notion for every validator. Holes would be silently skipped by
+ * `every`/`forEach` (validating elements nobody looked at), and extra own
+ * properties — an own `toJSON` above all — would make `JSON.stringify` emit
+ * something other than what was validated. Both are impossible in
+ * `JSON.parse` output and rejected here.
+ */
+function isDenseArray(value: unknown): value is unknown[] {
+  if (!Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === value.length && keys.every((key, index) => key === String(index));
+}
+
 function show(value: unknown): string {
   if (value === undefined) return "undefined";
   if (typeof value === "bigint") return `${value}n`;
@@ -117,6 +140,11 @@ function validateJsonAtDepth(value: unknown, depth: number): ValidationProblem[]
   if (Array.isArray(value)) {
     if (depth >= MAX_JSON_DEPTH) {
       return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
+    }
+    if (!isDenseArray(value)) {
+      return [
+        problem([], "array has holes or non-index own properties", "invalid_type"),
+      ];
     }
     value.forEach((item, index) => {
       problems.push(...prefix(index, validateJsonAtDepth(item, depth + 1)));
@@ -270,7 +298,7 @@ export function parseMetadataFieldV3(value: unknown): ZarrV3MetadataFieldJSON {
  * floats, mirroring the Python bool-is-not-int rule.
  */
 function isIntSequence(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every((item) => Number.isInteger(item));
+  return isDenseArray(value) && value.every((item) => Number.isInteger(item));
 }
 
 /**
@@ -299,12 +327,12 @@ function validateDimSequence(doc: Record<string, unknown>, key: string): Validat
  */
 function isDtypeV2(value: unknown, depth = 0): boolean {
   if (typeof value === "string") return true;
-  if (!Array.isArray(value)) return false;
+  if (!isDenseArray(value)) return false;
   // A dtype nested past the depth cap is rejected wholesale rather than
   // recursed into; this is the same hardening rule as validateJson's.
   if (depth >= MAX_JSON_DEPTH) return false;
   for (const record of value) {
-    if (typeof record === "string" || !Array.isArray(record)) return false;
+    if (typeof record === "string" || !isDenseArray(record)) return false;
     if (record.length !== 2 && record.length !== 3) return false;
     if (typeof record[0] !== "string") return false;
     if (!isDtypeV2(record[1], depth + 1)) return false;
@@ -376,7 +404,7 @@ export function validateArrayMetadataV3(value: unknown): ValidationProblem[] {
   for (const key of ["codecs", "storage_transformers"]) {
     if (has(doc, key)) {
       const entries = doc[key];
-      if (!Array.isArray(entries)) {
+      if (!isDenseArray(entries)) {
         problems.push(problem([key], "expected a sequence", "invalid_type"));
       } else {
         if (key === "codecs" && entries.length === 0) {
@@ -396,7 +424,7 @@ export function validateArrayMetadataV3(value: unknown): ValidationProblem[] {
     // field-level loc, not per-bad-item locs; per-index locs are reserved for
     // the metadata-field lists (codecs, storage_transformers).
     const names = doc["dimension_names"];
-    if (!Array.isArray(names)) {
+    if (!isDenseArray(names)) {
       problems.push(problem(["dimension_names"], "expected a sequence", "invalid_type"));
     } else if (!names.every((item) => item === null || typeof item === "string")) {
       problems.push(
@@ -431,6 +459,18 @@ export function parseArrayMetadataV3(value: unknown): ZarrV3ArrayMetadataJSON {
  * validators.
  */
 export function validateConsolidatedMetadataV3(value: unknown): ValidationProblem[] {
+  return validateConsolidatedMetadataV3AtDepth(value, 0);
+}
+
+function validateConsolidatedMetadataV3AtDepth(
+  value: unknown,
+  depth: number,
+): ValidationProblem[] {
+  // The group <-> consolidated document recursion consumes native stack per
+  // level, so it carries the same depth budget as the JSON-value walk.
+  if (depth >= MAX_JSON_DEPTH) {
+    return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
+  }
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
@@ -453,7 +493,9 @@ export function validateConsolidatedMetadataV3(value: unknown): ValidationProble
         if (nodeType === "array") {
           problems.push(...prefix("metadata", prefix(key, validateArrayMetadataV3(entry))));
         } else if (nodeType === "group") {
-          problems.push(...prefix("metadata", prefix(key, validateGroupMetadataV3(entry))));
+          problems.push(
+            ...prefix("metadata", prefix(key, validateGroupMetadataV3AtDepth(entry, depth + 1))),
+          );
         } else {
           problems.push(
             problem(["metadata", key, "node_type"], "expected 'array' or 'group'", "invalid_value"),
@@ -473,6 +515,10 @@ export function validateConsolidatedMetadataV3(value: unknown): ValidationProble
  * deep-validated (envelope and entries).
  */
 export function validateGroupMetadataV3(value: unknown): ValidationProblem[] {
+  return validateGroupMetadataV3AtDepth(value, 0);
+}
+
+function validateGroupMetadataV3AtDepth(value: unknown, depth: number): ValidationProblem[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
@@ -497,7 +543,7 @@ export function validateGroupMetadataV3(value: unknown): ValidationProblem[] {
     problems.push(
       ...prefix(
         ZARR_V3_CONSOLIDATED_METADATA_KEY,
-        validateConsolidatedMetadataV3(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY]),
+        validateConsolidatedMetadataV3AtDepth(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], depth + 1),
       ),
     );
   }
@@ -591,7 +637,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
   }
   if (has(doc, "filters")) {
     const filters = doc["filters"];
-    if (filters !== null && (!Array.isArray(filters) || !filters.every(isCodecV2))) {
+    if (filters !== null && (!isDenseArray(filters) || !filters.every(isCodecV2))) {
       problems.push(
         problem(
           ["filters"],
@@ -599,7 +645,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
           "invalid_type",
         ),
       );
-    } else if (filters !== null && Array.isArray(filters)) {
+    } else if (filters !== null && isDenseArray(filters)) {
       if (filters.length === 0) {
         problems.push(problem(["filters"], "expected at least one filter", "invalid_value"));
       }
@@ -755,6 +801,10 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  * `invalid_json` problem, rather than leaking a decode exception to
  * callers. `JSON.parse` already rejects the non-standard `NaN`/`Infinity`
  * constants Python has to opt out of explicitly.
+ *
+ * One intentional divergence: bytes must be UTF-8 (RFC 8259's mandated
+ * interchange encoding). Python's `json.loads` auto-detects UTF-16/32 and
+ * would accept such documents; here they are reported as `invalid_json`.
  */
 export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   const raw = storeGet(mapping, key);

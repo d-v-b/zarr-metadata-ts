@@ -169,3 +169,64 @@ describe("dumpStoreJson", () => {
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
   });
 });
+
+describe("group ↔ consolidated recursion depth cap (round 2)", () => {
+  function nestedGroups(depth: number): unknown {
+    const open =
+      '{"zarr_format":3,"node_type":"group","consolidated_metadata":{"kind":"inline","must_understand":false,"metadata":{"g":';
+    return JSON.parse(
+      open.repeat(depth) + '{"zarr_format":3,"node_type":"group"}' + "}}}".repeat(depth),
+    );
+  }
+
+  it("reports a problem on a deep consolidated chain instead of throwing", async () => {
+    const { validateGroupMetadataV3, validateMetadataV3 } = await import("../src/index.js");
+    const deep = nestedGroups(5000);
+    const problems = validateGroupMetadataV3(deep);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.message).toContain("nesting depth");
+    expect(validateMetadataV3(deep)).toHaveLength(1);
+    // Shallow chains still validate cleanly.
+    expect(validateGroupMetadataV3(nestedGroups(10))).toEqual([]);
+  });
+
+  it("terminates on a circular consolidated graph", async () => {
+    const { isGroupMetadataV3 } = await import("../src/index.js");
+    const group: Record<string, unknown> = { zarr_format: 3, node_type: "group" };
+    group["consolidated_metadata"] = {
+      kind: "inline",
+      must_understand: false,
+      metadata: { self: group },
+    };
+    expect(isGroupMetadataV3(group)).toBe(false);
+  });
+});
+
+describe("dense-array requirement (round 2)", () => {
+  it("rejects arrays with an own toJSON so nothing validates as one thing and serializes as another", () => {
+    const evil: number[] & { toJSON?: () => string } = [1, 2];
+    evil.toJSON = () => "evil";
+    expect(isJson(evil)).toBe(false);
+    expect(() => dumpStoreJson(evil)).toThrow(MetadataValidationError);
+  });
+
+  it("rejects sparse arrays everywhere elements would be skipped", () => {
+    // eslint-style hole: [1, <hole>, 3]
+    const holey = [1, , 3]; // eslint-disable-line no-sparse-arrays
+    expect(isJson(holey)).toBe(false);
+    expect(validateArrayMetadataV2({
+      zarr_format: 2,
+      shape: holey,
+      chunks: [1, 2, 3],
+      dtype: "<f8",
+      compressor: null,
+      fill_value: 0,
+      order: "C",
+      filters: null,
+    })).toEqual([{ loc: ["shape"], message: "expected a sequence of int", kind: "invalid_type" }]);
+    const problems = validateArrayMetadataV3({ ...VALID_ARRAY, dimension_names: [, "x"] }); // eslint-disable-line no-sparse-arrays
+    expect(problems).toEqual([
+      { loc: ["dimension_names"], message: "expected a sequence", kind: "invalid_type" },
+    ]);
+  });
+});
