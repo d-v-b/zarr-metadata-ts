@@ -9,17 +9,18 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  flattenTree,
   validateArrayMetadataV2,
   validateArrayMetadataV3,
   validateConsolidatedMetadataV2,
   validateGroupMetadataV2,
   validateGroupMetadataV3,
-  type ValidationProblem,
+  type ErrorTree,
 } from "../src/index.js";
 
 const CORPUS_DIR = fileURLToPath(new URL("../conformance/", import.meta.url));
 
-const VALIDATORS: Record<string, (value: unknown) => ValidationProblem[]> = {
+const VALIDATORS: Record<string, (value: unknown) => ErrorTree> = {
   v3_array: validateArrayMetadataV3,
   v3_group: validateGroupMetadataV3,
   v2_array: validateArrayMetadataV2,
@@ -33,9 +34,11 @@ interface ConformanceCase {
   problems: Array<{ loc: Array<string | number>; kind: string }>;
 }
 
-/** Order-insensitive canonical form of a problem set: sorted (loc, kind) pairs. */
-function canonical(problems: Array<{ loc: ReadonlyArray<string | number>; kind: string }>): string[] {
-  return problems.map((p) => JSON.stringify([p.loc, p.kind])).sort();
+/** Order-insensitive canonical form of a problem set: sorted (path, kind) pairs. */
+function canonical(
+  problems: Array<{ loc?: ReadonlyArray<string | number>; path?: ReadonlyArray<string | number>; kind: string }>,
+): string[] {
+  return problems.map((p) => JSON.stringify([p.path ?? p.loc, p.kind])).sort();
 }
 
 const kinds = readdirSync(CORPUS_DIR)
@@ -73,7 +76,7 @@ for (const kind of kinds) {
         // runner gets this via KeyError).
         expect(Object.hasOwn(testCase, "document")).toBe(true);
         expect(Array.isArray(testCase.problems)).toBe(true);
-        const actual = validator(testCase.document);
+        const actual = flattenTree(validator(testCase.document));
         expect(canonical(actual)).toEqual(canonical(testCase.problems));
       });
     }

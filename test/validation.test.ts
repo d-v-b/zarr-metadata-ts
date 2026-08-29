@@ -1,16 +1,20 @@
 /**
  * TS-specific unit tests: behavior the conformance corpus cannot express
  * because its fixtures must be JSON text (non-JSON runtime values), plus the
- * parse/guard/error API surface.
+ * tree/parse/guard/error API surface.
  */
 import { describe, expect, it } from "vitest";
 
 import {
-  formatProblem,
+  flattenTree,
+  formatTree,
   isArrayMetadataV3,
+  isEmptyTree,
   MetadataValidationError,
   parseArrayMetadataV3,
   parseJson,
+  safeParseArrayMetadataV3,
+  treeOf,
   validateJson,
   validateMetadataV3,
 } from "../src/index.js";
@@ -26,36 +30,75 @@ const VALID_ARRAY = {
   codecs: ["bytes"],
 };
 
+describe("the error tree", () => {
+  it("is empty exactly when validation succeeds", () => {
+    expect(isEmptyTree(validateMetadataV3(VALID_ARRAY))).toBe(true);
+    expect(isEmptyTree(validateMetadataV3({ zarr_format: 3 }))).toBe(false);
+  });
+
+  it("mirrors the document shape, with issues at the offending nodes", () => {
+    const tree = validateMetadataV3({ ...VALID_ARRAY, codecs: [42] });
+    expect(tree.issues).toEqual([]);
+    const codecEntry = tree.children.get("codecs")?.children.get(0);
+    expect(codecEntry?.issues).toEqual([
+      {
+        kind: "invalid_type",
+        message: "expected a metadata field (string or extension object)",
+      },
+    ]);
+  });
+
+  it("round-trips through flattenTree/treeOf", () => {
+    const tree = validateMetadataV3({ zarr_format: 3, node_type: "array" });
+    const flat = flattenTree(tree);
+    expect(flat).toHaveLength(6);
+    expect(flat.every((issue) => issue.kind === "missing_key")).toBe(true);
+    expect(flattenTree(treeOf(flat))).toEqual(flat);
+  });
+});
+
 describe("validateJson", () => {
-  it("rejects non-finite numbers", () => {
-    const problems = validateJson({ a: [1, Infinity] });
-    expect(problems).toEqual([
-      { loc: ["a", 1], message: "non-finite number Infinity is not JSON", kind: "invalid_value" },
+  it("rejects non-finite numbers at their path", () => {
+    expect(flattenTree(validateJson({ a: [1, Infinity] }))).toEqual([
+      { path: ["a", 1], message: "non-finite number Infinity is not JSON", kind: "invalid_value" },
     ]);
   });
 
   it("rejects non-JSON runtime values with their path", () => {
-    const problems = validateJson({ a: { b: undefined } });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]!.loc).toEqual(["a", "b"]);
-    expect(problems[0]!.kind).toBe("invalid_type");
+    const issues = flattenTree(validateJson({ a: { b: undefined } }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.path).toEqual(["a", "b"]);
+    expect(issues[0]!.kind).toBe("invalid_type");
   });
 });
 
-describe("parse functions", () => {
-  it("throw MetadataValidationError carrying every problem", () => {
+describe("parse and safeParse", () => {
+  it("parse throws MetadataValidationError carrying the whole tree", () => {
     expect.assertions(3);
     try {
       parseArrayMetadataV3({ zarr_format: 3, node_type: "array" });
     } catch (error) {
       expect(error).toBeInstanceOf(MetadataValidationError);
-      const problems = (error as MetadataValidationError).problems;
-      expect(problems).toHaveLength(6);
-      expect(problems.every((p) => p.kind === "missing_key")).toBe(true);
+      const { issues } = error as MetadataValidationError;
+      expect(issues).toHaveLength(6);
+      expect(issues.every((issue) => issue.kind === "missing_key")).toBe(true);
     }
   });
 
-  it("return the input narrowed on success", () => {
+  it("safeParse returns a discriminated union", () => {
+    const ok = safeParseArrayMetadataV3(VALID_ARRAY);
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.value).toBe(VALID_ARRAY);
+    const bad = safeParseArrayMetadataV3({ ...VALID_ARRAY, codecs: [] });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      expect(flattenTree(bad.errors)).toEqual([
+        { path: ["codecs"], message: "expected at least one codec", kind: "invalid_value" },
+      ]);
+    }
+  });
+
+  it("parse returns the input narrowed on success", () => {
     expect(parseArrayMetadataV3(VALID_ARRAY)).toBe(VALID_ARRAY);
     expect(parseJson([1, "a", null])).toEqual([1, "a", null]);
   });
@@ -71,29 +114,32 @@ describe("type guards", () => {
 
 describe("validateMetadataV3 dispatcher", () => {
   it("routes arrays and groups to the right validator", () => {
-    expect(validateMetadataV3(VALID_ARRAY)).toEqual([]);
-    expect(validateMetadataV3({ zarr_format: 3, node_type: "group" })).toEqual([]);
+    expect(isEmptyTree(validateMetadataV3(VALID_ARRAY))).toBe(true);
+    expect(isEmptyTree(validateMetadataV3({ zarr_format: 3, node_type: "group" }))).toBe(true);
   });
 
   it("reports a missing or unusable node_type", () => {
-    expect(validateMetadataV3({ zarr_format: 3 })).toEqual([
-      { loc: ["node_type"], message: "missing required key", kind: "missing_key" },
+    expect(flattenTree(validateMetadataV3({ zarr_format: 3 }))).toEqual([
+      { path: ["node_type"], message: "missing required key", kind: "missing_key" },
     ]);
-    const problems = validateMetadataV3({ zarr_format: 3, node_type: "dataset" });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]!.kind).toBe("invalid_value");
+    const issues = flattenTree(validateMetadataV3({ zarr_format: 3, node_type: "dataset" }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.kind).toBe("invalid_value");
   });
 
   it("rejects non-mapping documents", () => {
-    expect(validateMetadataV3([])[0]!.kind).toBe("invalid_type");
+    expect(flattenTree(validateMetadataV3([]))[0]!.kind).toBe("invalid_type");
   });
 });
 
-describe("formatProblem", () => {
-  it("joins the loc with dots and uses <root> for an empty loc", () => {
-    expect(formatProblem({ loc: ["codecs", 0, "name"], message: "m", kind: "invalid_type" })).toBe(
-      "codecs.0.name: m",
-    );
-    expect(formatProblem({ loc: [], message: "m", kind: "invalid_type" })).toBe("<root>: m");
+describe("formatTree", () => {
+  it("renders one dotted-path line per issue, with <root> for an empty path", () => {
+    const tree = treeOf([
+      { path: ["codecs", 0, "name"], message: "m", kind: "invalid_type" },
+      { path: [], message: "r", kind: "invalid_type" },
+    ]);
+    // flattenTree emits a node's own issues before its children's, so the
+    // root-level issue leads.
+    expect(formatTree(tree)).toBe("<root>: r\ncodecs.0.name: m");
   });
 });

@@ -40,10 +40,13 @@
 import type { JSONValue, ZarrV3MetadataFieldJSON } from "./common.js";
 import {
   MetadataValidationError,
-  prefix,
-  problem,
-  type ValidationProblem,
-} from "./problems.js";
+  treeOf,
+  type ErrorTree,
+  type IssueKind,
+  type IssuePath,
+  type ParseResult,
+  type PathedIssue,
+} from "./errors.js";
 import {
   ARRAY_METADATA_REQUIRED_KEYS_V2,
   ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
@@ -64,7 +67,19 @@ import {
   type ZarrV3ArrayMetadataJSON,
   type ZarrV3ConsolidatedMetadataJSON,
   type ZarrV3GroupMetadataJSON,
+  type ZarrV3MetadataJSON,
 } from "./v3.js";
+
+// Validators internally accumulate flat pathed issues (cheap to emit and to
+// prefix while recursing); the public functions assemble them into the
+// ErrorTree consumers see.
+function problem(path: IssuePath, message: string, kind: IssueKind): PathedIssue {
+  return { path, message, kind };
+}
+
+function prefix(head: string | number, issues: PathedIssue[]): PathedIssue[] {
+  return issues.map((issue) => ({ ...issue, path: [head, ...issue.path] }));
+}
 
 /**
  * Maximum container nesting depth accepted by `validateJson` (and, through
@@ -124,11 +139,11 @@ function show(value: unknown): string {
 }
 
 /** Return every reason `value` is not JSON-serializable (recursively). */
-export function validateJson(value: unknown): ValidationProblem[] {
+function jsonProblems(value: unknown): PathedIssue[] {
   return validateJsonAtDepth(value, 0);
 }
 
-function validateJsonAtDepth(value: unknown, depth: number): ValidationProblem[] {
+function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
   if (typeof value === "number") {
     if (Number.isFinite(value)) return [];
     return [problem([], `non-finite number ${value} is not JSON`, "invalid_value")];
@@ -136,7 +151,7 @@ function validateJsonAtDepth(value: unknown, depth: number): ValidationProblem[]
   if (typeof value === "string" || typeof value === "boolean" || value === null) {
     return [];
   }
-  const problems: ValidationProblem[] = [];
+  const problems: PathedIssue[] = [];
   if (Array.isArray(value)) {
     if (depth >= MAX_JSON_DEPTH) {
       return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
@@ -163,23 +178,12 @@ function validateJsonAtDepth(value: unknown, depth: number): ValidationProblem[]
   return [problem([], `not a JSON-serializable value: ${show(value)}`, "invalid_type")];
 }
 
-/** Whether `value` is a JSON structure (recursively). */
-export function isJson(value: unknown): value is JSONValue {
-  return validateJson(value).length === 0;
-}
-
-/** Return `value` narrowed to `JSONValue`, or throw `MetadataValidationError`. */
-export function parseJson(value: unknown): JSONValue {
-  const problems = validateJson(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as JSONValue;
-}
 
 /** One `missing_key` problem per required key absent from `doc`. */
 function missingKeys(
   required: ReadonlyArray<string>,
   doc: Record<string, unknown>,
-): ValidationProblem[] {
+): PathedIssue[] {
   return [...required]
     .filter((key) => !(has(doc, key)))
     .sort()
@@ -190,7 +194,7 @@ function missingKeys(
 function unexpectedKeys(
   allowed: ReadonlyArray<string>,
   doc: Record<string, unknown>,
-): ValidationProblem[] {
+): PathedIssue[] {
   return Object.keys(doc)
     .filter((key) => !allowed.includes(key))
     .map((key) => problem([key], "unexpected document member", "invalid_value"));
@@ -201,7 +205,7 @@ function checkLiteral(
   doc: Record<string, unknown>,
   key: string,
   expected: string | number | boolean,
-): ValidationProblem[] {
+): PathedIssue[] {
   if (has(doc, key) && (typeof doc[key] !== typeof expected || doc[key] !== expected)) {
     return [
       problem([key], `expected ${show(expected)}, got ${show(doc[key])}`, "invalid_value"),
@@ -215,12 +219,12 @@ function validateExtensionFieldsV3(
   doc: Record<string, unknown>,
   standardKeys: ReadonlyArray<string>,
   additionalReservedKeys: ReadonlyArray<string> = [],
-): ValidationProblem[] {
+): PathedIssue[] {
   const reserved = new Set([...standardKeys, ...additionalReservedKeys]);
-  const problems: ValidationProblem[] = [];
+  const problems: PathedIssue[] = [];
   for (const [key, value] of Object.entries(doc)) {
     if (reserved.has(key)) continue;
-    problems.push(...prefix(key, validateJson(value)));
+    problems.push(...prefix(key, jsonProblems(value)));
   }
   return problems;
 }
@@ -231,10 +235,10 @@ function validateExtensionFieldsV3(
  * A metadata field is a bare name string or an object containing `name` and
  * optional `configuration` and `must_understand` members.
  */
-export function validateMetadataFieldV3(
+function metadataFieldV3Problems(
   value: unknown,
   options: { allowMustUnderstandFalse?: boolean } = {},
-): ValidationProblem[] {
+): PathedIssue[] {
   const { allowMustUnderstandFalse = true } = options;
   if (typeof value === "string") return [];
   if (!isPlainObject(value)) {
@@ -242,7 +246,7 @@ export function validateMetadataFieldV3(
       problem([], "expected a metadata field (string or extension object)", "invalid_type"),
     ];
   }
-  const problems: ValidationProblem[] = [];
+  const problems: PathedIssue[] = [];
   const allowedKeys = new Set(["name", "configuration", "must_understand"]);
   for (const key of Object.keys(value)) {
     if (!allowedKeys.has(key)) {
@@ -258,7 +262,7 @@ export function validateMetadataFieldV3(
       problems.push(problem(["configuration"], "expected a mapping", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(configuration)) {
-        problems.push(...prefix("configuration", prefix(key, validateJson(item))));
+        problems.push(...prefix("configuration", prefix(key, jsonProblems(item))));
       }
     }
   }
@@ -279,17 +283,6 @@ export function validateMetadataFieldV3(
   return problems;
 }
 
-/** Whether `value` is a v3 metadata field: a bare name or a named config. */
-export function isMetadataFieldV3(value: unknown): value is ZarrV3MetadataFieldJSON {
-  return validateMetadataFieldV3(value).length === 0;
-}
-
-/** Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or throw. */
-export function parseMetadataFieldV3(value: unknown): ZarrV3MetadataFieldJSON {
-  const problems = validateMetadataFieldV3(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV3MetadataFieldJSON;
-}
 
 /**
  * Whether `value` is an array of integers.
@@ -305,7 +298,7 @@ function isIntSequence(value: unknown): value is number[] {
  * Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
  * Dimension lengths are non-negative integers.
  */
-function validateDimSequence(doc: Record<string, unknown>, key: string): ValidationProblem[] {
+function validateDimSequence(doc: Record<string, unknown>, key: string): PathedIssue[] {
   if (!(has(doc, key))) return [];
   const value = doc[key];
   if (!isIntSequence(value)) {
@@ -347,11 +340,11 @@ function isCodecV2(value: unknown): boolean {
 }
 
 /** Validate a v2 codec's required shape and JSON-valued configuration. */
-function validateCodecV2(value: unknown): ValidationProblem[] {
+function validateCodecV2(value: unknown): PathedIssue[] {
   if (!isCodecV2(value)) {
     return [problem([], "expected a codec configuration with a string 'id'", "invalid_type")];
   }
-  return validateJson(value);
+  return jsonProblems(value);
 }
 
 /**
@@ -361,13 +354,13 @@ function validateCodecV2(value: unknown): ValidationProblem[] {
  * caller to prefix), this emits the already-parent-relative `["attributes"]`
  * loc, since it is only ever called with a document's `attributes` value.
  */
-function validateAttributes(value: unknown): ValidationProblem[] {
+function validateAttributes(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem(["attributes"], "expected a mapping with string keys", "invalid_type")];
   }
-  const problems: ValidationProblem[] = [];
+  const problems: PathedIssue[] = [];
   for (const [key, item] of Object.entries(value)) {
-    problems.push(...prefix("attributes", prefix(key, validateJson(item))));
+    problems.push(...prefix("attributes", prefix(key, jsonProblems(item))));
   }
   return problems;
 }
@@ -378,25 +371,25 @@ function validateAttributes(value: unknown): ValidationProblem[] {
  * Checks structure, not domain validity. Unknown top-level keys are allowed
  * (they are extension fields).
  */
-export function validateArrayMetadataV3(value: unknown): ValidationProblem[] {
+function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  const problems: ValidationProblem[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc);
+  const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc);
   problems.push(...validateExtensionFieldsV3(doc, ARRAY_METADATA_STANDARD_KEYS_V3));
   problems.push(...checkLiteral(doc, "zarr_format", 3));
   problems.push(...checkLiteral(doc, "node_type", "array"));
   problems.push(...validateDimSequence(doc, "shape"));
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", validateJson(doc["fill_value"])));
+    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
   for (const key of ["data_type", "chunk_grid", "chunk_key_encoding"]) {
     if (has(doc, key)) {
       problems.push(
         ...prefix(
           key,
-          validateMetadataFieldV3(doc[key], { allowMustUnderstandFalse: false }),
+          metadataFieldV3Problems(doc[key], { allowMustUnderstandFalse: false }),
         ),
       );
     }
@@ -411,7 +404,7 @@ export function validateArrayMetadataV3(value: unknown): ValidationProblem[] {
           problems.push(problem(["codecs"], "expected at least one codec", "invalid_value"));
         }
         entries.forEach((entry, index) => {
-          problems.push(...prefix(key, prefix(index, validateMetadataFieldV3(entry))));
+          problems.push(...prefix(key, prefix(index, metadataFieldV3Problems(entry))));
         });
       }
     }
@@ -439,17 +432,6 @@ export function validateArrayMetadataV3(value: unknown): ValidationProblem[] {
   return problems;
 }
 
-/** Whether `value` is a structurally-valid v3 array metadata document. */
-export function isArrayMetadataV3(value: unknown): value is ZarrV3ArrayMetadataJSON {
-  return validateArrayMetadataV3(value).length === 0;
-}
-
-/** Return `value` as `ZarrV3ArrayMetadataJSON`, or throw `MetadataValidationError`. */
-export function parseArrayMetadataV3(value: unknown): ZarrV3ArrayMetadataJSON {
-  const problems = validateArrayMetadataV3(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV3ArrayMetadataJSON;
-}
 
 /**
  * Return every reason `value` is not a valid inline consolidated envelope.
@@ -458,14 +440,14 @@ export function parseArrayMetadataV3(value: unknown): ZarrV3ArrayMetadataJSON {
  * where appropriate). Entries recurse into the array and group document
  * validators.
  */
-export function validateConsolidatedMetadataV3(value: unknown): ValidationProblem[] {
+function consolidatedMetadataV3Problems(value: unknown): PathedIssue[] {
   return validateConsolidatedMetadataV3AtDepth(value, 0);
 }
 
 function validateConsolidatedMetadataV3AtDepth(
   value: unknown,
   depth: number,
-): ValidationProblem[] {
+): PathedIssue[] {
   // The group <-> consolidated document recursion consumes native stack per
   // level, so it carries the same depth budget as the JSON-value walk.
   if (depth >= MAX_JSON_DEPTH) {
@@ -475,7 +457,7 @@ function validateConsolidatedMetadataV3AtDepth(
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const env = value;
-  const problems: ValidationProblem[] = ["kind", "must_understand", "metadata"]
+  const problems: PathedIssue[] = ["kind", "must_understand", "metadata"]
     .filter((key) => !(has(env, key)))
     .map((key) => problem([key], "missing required key", "missing_key"));
   problems.push(...unexpectedKeys(["kind", "must_understand", "metadata"], env));
@@ -491,7 +473,7 @@ function validateConsolidatedMetadataV3AtDepth(
       for (const [key, entry] of Object.entries(entries)) {
         const nodeType = isPlainObject(entry) ? entry["node_type"] : undefined;
         if (nodeType === "array") {
-          problems.push(...prefix("metadata", prefix(key, validateArrayMetadataV3(entry))));
+          problems.push(...prefix("metadata", prefix(key, arrayMetadataV3Problems(entry))));
         } else if (nodeType === "group") {
           problems.push(
             ...prefix("metadata", prefix(key, validateGroupMetadataV3AtDepth(entry, depth + 1))),
@@ -514,16 +496,16 @@ function validateConsolidatedMetadataV3AtDepth(
  * (extension fields); a `consolidated_metadata` key, if present, is
  * deep-validated (envelope and entries).
  */
-export function validateGroupMetadataV3(value: unknown): ValidationProblem[] {
+function groupMetadataV3Problems(value: unknown): PathedIssue[] {
   return validateGroupMetadataV3AtDepth(value, 0);
 }
 
-function validateGroupMetadataV3AtDepth(value: unknown, depth: number): ValidationProblem[] {
+function validateGroupMetadataV3AtDepth(value: unknown, depth: number): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  const problems: ValidationProblem[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V3, doc);
+  const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V3, doc);
   problems.push(
     ...validateExtensionFieldsV3(doc, GROUP_METADATA_STANDARD_KEYS_V3, [
       ZARR_V3_CONSOLIDATED_METADATA_KEY,
@@ -550,22 +532,6 @@ function validateGroupMetadataV3AtDepth(value: unknown, depth: number): Validati
   return problems;
 }
 
-/** Whether `value` is a structurally-valid v3 group metadata document. */
-export function isGroupMetadataV3(value: unknown): value is ZarrV3GroupMetadataJSON {
-  return validateGroupMetadataV3(value).length === 0;
-}
-
-/** Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or throw. */
-export function parseGroupMetadataV3(value: unknown): ZarrV3GroupMetadataJSON {
-  const problems = validateGroupMetadataV3(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV3GroupMetadataJSON;
-}
-
-/** Whether `value` is a valid inline consolidated envelope. */
-export function isConsolidatedMetadataV3(value: unknown): value is ZarrV3ConsolidatedMetadataJSON {
-  return validateConsolidatedMetadataV3(value).length === 0;
-}
 
 /**
  * Return every reason `value` is not a structurally-valid v3 metadata
@@ -577,13 +543,13 @@ export function isConsolidatedMetadataV3(value: unknown): value is ZarrV3Consoli
  * validator per node type); it exists for consumers handed an arbitrary
  * `zarr.json`, like editor tooling.
  */
-export function validateMetadataV3(value: unknown): ValidationProblem[] {
+function metadataV3Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const nodeType = value["node_type"];
-  if (nodeType === "array") return validateArrayMetadataV3(value);
-  if (nodeType === "group") return validateGroupMetadataV3(value);
+  if (nodeType === "array") return arrayMetadataV3Problems(value);
+  if (nodeType === "group") return groupMetadataV3Problems(value);
   if (!(has(value, "node_type"))) {
     return [problem(["node_type"], "missing required key", "missing_key")];
   }
@@ -600,12 +566,12 @@ export function validateMetadataV3(value: unknown): ValidationProblem[] {
  * `filters` are required keys that may be `null`, and otherwise must be
  * codec configurations (objects with a string `id`).
  */
-export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
+function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  const problems: ValidationProblem[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
+  const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
   problems.push(...unexpectedKeys(ARRAY_METADATA_STANDARD_KEYS_V2, doc));
   problems.push(...checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
@@ -650,7 +616,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
         problems.push(problem(["filters"], "expected at least one filter", "invalid_value"));
       }
       filters.forEach((item, index) => {
-        problems.push(...prefix("filters", prefix(index, validateJson(item))));
+        problems.push(...prefix("filters", prefix(index, jsonProblems(item))));
       });
     }
   }
@@ -667,7 +633,7 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
     );
   }
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", validateJson(doc["fill_value"])));
+    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
   if (has(doc, "attributes")) {
     problems.push(...validateAttributes(doc["attributes"]));
@@ -675,17 +641,6 @@ export function validateArrayMetadataV2(value: unknown): ValidationProblem[] {
   return problems;
 }
 
-/** Whether `value` is a structurally-valid v2 array metadata document. */
-export function isArrayMetadataV2(value: unknown): value is ZarrV2ArrayMetadataJSON {
-  return validateArrayMetadataV2(value).length === 0;
-}
-
-/** Return `value` as `ZarrV2ArrayMetadataJSON`, or throw `MetadataValidationError`. */
-export function parseArrayMetadataV2(value: unknown): ZarrV2ArrayMetadataJSON {
-  const problems = validateArrayMetadataV2(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV2ArrayMetadataJSON;
-}
 
 /**
  * Return every reason `value` is not a structurally-valid v2 group doc.
@@ -693,12 +648,12 @@ export function parseArrayMetadataV2(value: unknown): ZarrV2ArrayMetadataJSON {
  * Validates the in-memory merged form: the `.zgroup` fields plus an optional
  * `attributes` mapping folded in from `.zattrs`.
  */
-export function validateGroupMetadataV2(value: unknown): ValidationProblem[] {
+function groupMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  const problems: ValidationProblem[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V2, doc);
+  const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V2, doc);
   problems.push(...unexpectedKeys(GROUP_METADATA_STANDARD_KEYS_V2, doc));
   problems.push(...checkLiteral(doc, "zarr_format", 2));
   if (has(doc, "attributes")) {
@@ -707,17 +662,6 @@ export function validateGroupMetadataV2(value: unknown): ValidationProblem[] {
   return problems;
 }
 
-/** Whether `value` is a structurally-valid v2 group metadata document. */
-export function isGroupMetadataV2(value: unknown): value is ZarrV2GroupMetadataJSON {
-  return validateGroupMetadataV2(value).length === 0;
-}
-
-/** Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or throw. */
-export function parseGroupMetadataV2(value: unknown): ZarrV2GroupMetadataJSON {
-  const problems = validateGroupMetadataV2(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV2GroupMetadataJSON;
-}
 
 /**
  * Return every reason `value` is not a structurally-valid `.zmetadata` doc
@@ -729,12 +673,12 @@ export function parseGroupMetadataV2(value: unknown): ZarrV2GroupMetadataJSON {
  * canonical representation must keep, and interpreting entries into node
  * documents is consumer work.
  */
-export function validateConsolidatedMetadataV2(value: unknown): ValidationProblem[] {
+function consolidatedMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  const problems: ValidationProblem[] = ["zarr_consolidated_format", "metadata"]
+  const problems: PathedIssue[] = ["zarr_consolidated_format", "metadata"]
     .filter((key) => !(has(doc, key)))
     .map((key) => problem([key], "missing required key", "missing_key"));
   problems.push(...unexpectedKeys(["zarr_consolidated_format", "metadata"], doc));
@@ -745,26 +689,13 @@ export function validateConsolidatedMetadataV2(value: unknown): ValidationProble
       problems.push(problem(["metadata"], "expected a mapping with string keys", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(entries)) {
-        problems.push(...prefix("metadata", prefix(key, validateJson(item))));
+        problems.push(...prefix("metadata", prefix(key, jsonProblems(item))));
       }
     }
   }
   return problems;
 }
 
-/** Whether `value` is a structurally-valid v2 consolidated metadata document. */
-export function isConsolidatedMetadataV2(
-  value: unknown,
-): value is ZarrV2ConsolidatedMetadataJSON {
-  return validateConsolidatedMetadataV2(value).length === 0;
-}
-
-/** Return `value` as `ZarrV2ConsolidatedMetadataJSON`, or throw. */
-export function parseConsolidatedMetadataV2(value: unknown): ZarrV2ConsolidatedMetadataJSON {
-  const problems = validateConsolidatedMetadataV2(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
-  return value as ZarrV2ConsolidatedMetadataJSON;
-}
 
 // TextDecoder/TextEncoder are globals in every supported runtime (Node,
 // browsers, workers) but live in the "dom" lib types; declare the minimal
@@ -809,7 +740,7 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
 export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   const raw = storeGet(mapping, key);
   if (raw === undefined) {
-    throw new MetadataValidationError([problem([key], "missing store key", "missing_key")]);
+    throw new MetadataValidationError(treeOf([problem([key], "missing store key", "missing_key")]));
   }
   try {
     const text =
@@ -817,7 +748,9 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new MetadataValidationError([problem([key], `invalid JSON: ${message}`, "invalid_json")]);
+    throw new MetadataValidationError(
+      treeOf([problem([key], `invalid JSON: ${message}`, "invalid_json")]),
+    );
   }
 }
 
@@ -833,7 +766,172 @@ export function dumpStoreJson(
   value: unknown,
   options: { indent?: number | string } = {},
 ): Uint8Array {
-  const problems = validateJson(value);
-  if (problems.length > 0) throw new MetadataValidationError(problems);
+  const problems = jsonProblems(value);
+  if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
   return new TextEncoder().encode(JSON.stringify(value, null, options.indent));
+}
+
+// ---------------------------------------------------------------------------
+// Public API. Each document kind gets four entry points built on one
+// internal problems function:
+//
+//   validate*(value)  -> ErrorTree            (empty tree = valid)
+//   is*(value)        -> type guard
+//   parse*(value)     -> narrowed document, or throws MetadataValidationError
+//   safeParse*(value) -> ParseResult<T> discriminated union
+// ---------------------------------------------------------------------------
+
+function toResult<T>(value: unknown, problems: PathedIssue[]): ParseResult<T> {
+  return problems.length === 0
+    ? { success: true, value: value as T }
+    : { success: false, errors: treeOf(problems) };
+}
+
+function toParsed<T>(value: unknown, problems: PathedIssue[]): T {
+  if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
+  return value as T;
+}
+
+/** Every reason `value` is not JSON-serializable, as an error tree. */
+export function validateJson(value: unknown): ErrorTree {
+  return treeOf(jsonProblems(value));
+}
+/** Whether `value` is a JSON structure (recursively). */
+export function isJson(value: unknown): value is JSONValue {
+  return jsonProblems(value).length === 0;
+}
+/** Return `value` narrowed to `JSONValue`, or throw `MetadataValidationError`. */
+export function parseJson(value: unknown): JSONValue {
+  return toParsed(value, jsonProblems(value));
+}
+export function safeParseJson(value: unknown): ParseResult<JSONValue> {
+  return toResult(value, jsonProblems(value));
+}
+
+/** Every reason `value` is not a v3 metadata field, as an error tree. */
+export function validateMetadataFieldV3(
+  value: unknown,
+  options: { allowMustUnderstandFalse?: boolean } = {},
+): ErrorTree {
+  return treeOf(metadataFieldV3Problems(value, options));
+}
+/** Whether `value` is a v3 metadata field: a bare name or a named config. */
+export function isMetadataFieldV3(value: unknown): value is ZarrV3MetadataFieldJSON {
+  return metadataFieldV3Problems(value).length === 0;
+}
+export function parseMetadataFieldV3(value: unknown): ZarrV3MetadataFieldJSON {
+  return toParsed(value, metadataFieldV3Problems(value));
+}
+export function safeParseMetadataFieldV3(value: unknown): ParseResult<ZarrV3MetadataFieldJSON> {
+  return toResult(value, metadataFieldV3Problems(value));
+}
+
+/** Every reason `value` is not a v3 array document, as an error tree. */
+export function validateArrayMetadataV3(value: unknown): ErrorTree {
+  return treeOf(arrayMetadataV3Problems(value));
+}
+export function isArrayMetadataV3(value: unknown): value is ZarrV3ArrayMetadataJSON {
+  return arrayMetadataV3Problems(value).length === 0;
+}
+export function parseArrayMetadataV3(value: unknown): ZarrV3ArrayMetadataJSON {
+  return toParsed(value, arrayMetadataV3Problems(value));
+}
+export function safeParseArrayMetadataV3(value: unknown): ParseResult<ZarrV3ArrayMetadataJSON> {
+  return toResult(value, arrayMetadataV3Problems(value));
+}
+
+/** Every reason `value` is not a v3 group document, as an error tree. */
+export function validateGroupMetadataV3(value: unknown): ErrorTree {
+  return treeOf(groupMetadataV3Problems(value));
+}
+export function isGroupMetadataV3(value: unknown): value is ZarrV3GroupMetadataJSON {
+  return groupMetadataV3Problems(value).length === 0;
+}
+export function parseGroupMetadataV3(value: unknown): ZarrV3GroupMetadataJSON {
+  return toParsed(value, groupMetadataV3Problems(value));
+}
+export function safeParseGroupMetadataV3(value: unknown): ParseResult<ZarrV3GroupMetadataJSON> {
+  return toResult(value, groupMetadataV3Problems(value));
+}
+
+/** Every reason `value` is not an inline consolidated envelope, as an error tree. */
+export function validateConsolidatedMetadataV3(value: unknown): ErrorTree {
+  return treeOf(consolidatedMetadataV3Problems(value));
+}
+export function isConsolidatedMetadataV3(
+  value: unknown,
+): value is ZarrV3ConsolidatedMetadataJSON {
+  return consolidatedMetadataV3Problems(value).length === 0;
+}
+export function parseConsolidatedMetadataV3(value: unknown): ZarrV3ConsolidatedMetadataJSON {
+  return toParsed(value, consolidatedMetadataV3Problems(value));
+}
+export function safeParseConsolidatedMetadataV3(
+  value: unknown,
+): ParseResult<ZarrV3ConsolidatedMetadataJSON> {
+  return toResult(value, consolidatedMetadataV3Problems(value));
+}
+
+/**
+ * Every reason `value` is not a v3 metadata document of either node type
+ * (the complete `zarr.json` grammar, dispatching on `node_type`), as an
+ * error tree.
+ */
+export function validateMetadataV3(value: unknown): ErrorTree {
+  return treeOf(metadataV3Problems(value));
+}
+export function isMetadataV3(value: unknown): value is ZarrV3MetadataJSON {
+  return metadataV3Problems(value).length === 0;
+}
+export function parseMetadataV3(value: unknown): ZarrV3MetadataJSON {
+  return toParsed(value, metadataV3Problems(value));
+}
+export function safeParseMetadataV3(value: unknown): ParseResult<ZarrV3MetadataJSON> {
+  return toResult(value, metadataV3Problems(value));
+}
+
+/** Every reason `value` is not a merged v2 array document, as an error tree. */
+export function validateArrayMetadataV2(value: unknown): ErrorTree {
+  return treeOf(arrayMetadataV2Problems(value));
+}
+export function isArrayMetadataV2(value: unknown): value is ZarrV2ArrayMetadataJSON {
+  return arrayMetadataV2Problems(value).length === 0;
+}
+export function parseArrayMetadataV2(value: unknown): ZarrV2ArrayMetadataJSON {
+  return toParsed(value, arrayMetadataV2Problems(value));
+}
+export function safeParseArrayMetadataV2(value: unknown): ParseResult<ZarrV2ArrayMetadataJSON> {
+  return toResult(value, arrayMetadataV2Problems(value));
+}
+
+/** Every reason `value` is not a merged v2 group document, as an error tree. */
+export function validateGroupMetadataV2(value: unknown): ErrorTree {
+  return treeOf(groupMetadataV2Problems(value));
+}
+export function isGroupMetadataV2(value: unknown): value is ZarrV2GroupMetadataJSON {
+  return groupMetadataV2Problems(value).length === 0;
+}
+export function parseGroupMetadataV2(value: unknown): ZarrV2GroupMetadataJSON {
+  return toParsed(value, groupMetadataV2Problems(value));
+}
+export function safeParseGroupMetadataV2(value: unknown): ParseResult<ZarrV2GroupMetadataJSON> {
+  return toResult(value, groupMetadataV2Problems(value));
+}
+
+/** Every reason `value` is not a `.zmetadata` document, as an error tree. */
+export function validateConsolidatedMetadataV2(value: unknown): ErrorTree {
+  return treeOf(consolidatedMetadataV2Problems(value));
+}
+export function isConsolidatedMetadataV2(
+  value: unknown,
+): value is ZarrV2ConsolidatedMetadataJSON {
+  return consolidatedMetadataV2Problems(value).length === 0;
+}
+export function parseConsolidatedMetadataV2(value: unknown): ZarrV2ConsolidatedMetadataJSON {
+  return toParsed(value, consolidatedMetadataV2Problems(value));
+}
+export function safeParseConsolidatedMetadataV2(
+  value: unknown,
+): ParseResult<ZarrV2ConsolidatedMetadataJSON> {
+  return toResult(value, consolidatedMetadataV2Problems(value));
 }

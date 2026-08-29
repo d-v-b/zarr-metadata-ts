@@ -8,12 +8,18 @@
 
 export type { JSONValue, ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON } from "./common.js";
 export {
-  formatProblem,
+  flattenTree,
+  formatTree,
+  isEmptyTree,
   MetadataValidationError,
-  type Loc,
-  type ProblemKind,
-  type ValidationProblem,
-} from "./problems.js";
+  treeOf,
+  type ErrorTree,
+  type Issue,
+  type IssueKind,
+  type IssuePath,
+  type ParseResult,
+  type PathedIssue,
+} from "./errors.js";
 export * from "./v2.js";
 export * from "./v3.js";
 export * from "./validation.js";

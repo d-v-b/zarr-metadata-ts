@@ -51,6 +51,11 @@ export type ZarrV3GroupMetadataJSON = {
 } & { [key: string]: JSONValue };
 
 /**
+ * Either v3 document form of `zarr.json`, discriminated by `node_type`.
+ */
+export type ZarrV3MetadataJSON = ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON;
+
+/**
  * Inline consolidated metadata embedded in a v3 group.
  *
  * There is no Zarr v3 specification for consolidated metadata; this models

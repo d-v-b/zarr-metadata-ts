@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dumpStoreJson,
-  isArrayMetadataV3,
+  flattenTree,
   isGroupMetadataV3,
   isJson,
   loadStoreJson,
@@ -38,8 +38,8 @@ function nest(depth: number): unknown {
 
 describe("nesting depth cap", () => {
   it("accepts documents up to MAX_JSON_DEPTH and reports beyond it", () => {
-    expect(validateJson(nest(MAX_JSON_DEPTH))).toEqual([]);
-    const problems = validateJson(nest(MAX_JSON_DEPTH + 1));
+    expect(flattenTree(validateJson(nest(MAX_JSON_DEPTH)))).toEqual([]);
+    const problems = flattenTree(validateJson(nest(MAX_JSON_DEPTH + 1)));
     expect(problems).toHaveLength(1);
     expect(problems[0]!.kind).toBe("invalid_value");
     expect(problems[0]!.message).toContain("nesting depth");
@@ -64,19 +64,21 @@ describe("nesting depth cap", () => {
   it("caps the independent dtype recursion route", () => {
     let dtype: unknown = "<i4";
     for (let i = 0; i < 200; i++) dtype = [["f", dtype]];
-    const problems = validateArrayMetadataV2({
-      zarr_format: 2,
-      shape: [1],
-      chunks: [1],
-      dtype,
-      compressor: null,
-      fill_value: 0,
-      order: "C",
-      filters: null,
-    });
+    const problems = flattenTree(
+      validateArrayMetadataV2({
+        zarr_format: 2,
+        shape: [1],
+        chunks: [1],
+        dtype,
+        compressor: null,
+        fill_value: 0,
+        order: "C",
+        filters: null,
+      }),
+    );
     expect(problems).toEqual([
       {
-        loc: ["dtype"],
+        path: ["dtype"],
         message: "expected a v2 dtype string or a sequence of field records",
         kind: "invalid_type",
       },
@@ -100,15 +102,15 @@ describe("non-plain objects are not mappings", () => {
   });
 
   it("reports a single root invalid_type for a non-mapping document, like Python", () => {
-    expect(validateArrayMetadataV2(new Date())).toEqual([
-      { loc: [], message: "expected a mapping", kind: "invalid_type" },
+    expect(flattenTree(validateArrayMetadataV2(new Date()))).toEqual([
+      { path: [], message: "expected a mapping", kind: "invalid_type" },
     ]);
   });
 
   it("rejects a Date in attributes instead of validating it as empty", () => {
-    const problems = validateArrayMetadataV3({ ...VALID_ARRAY, attributes: new Date() });
+    const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, attributes: new Date() }));
     expect(problems).toEqual([
-      { loc: ["attributes"], message: "expected a mapping with string keys", kind: "invalid_type" },
+      { path: ["attributes"], message: "expected a mapping with string keys", kind: "invalid_type" },
     ]);
   });
 });
@@ -116,9 +118,9 @@ describe("non-plain objects are not mappings", () => {
 describe("BigInt", () => {
   it("is reported as non-JSON instead of crashing the renderer", () => {
     expect(isJson(1n)).toBe(false);
-    const problems = validateJson({ a: 1n });
+    const problems = flattenTree(validateJson({ a: 1n }));
     expect(problems).toHaveLength(1);
-    expect(problems[0]!.loc).toEqual(["a"]);
+    expect(problems[0]!.path).toEqual(["a"]);
     expect(problems[0]!.kind).toBe("invalid_type");
     expect(problems[0]!.message).toContain("1n");
   });
@@ -139,8 +141,8 @@ describe("loadStoreJson", () => {
       loadStoreJson({}, "zarr.json");
     } catch (error) {
       expect(error).toBeInstanceOf(MetadataValidationError);
-      expect((error as MetadataValidationError).problems).toEqual([
-        { loc: ["zarr.json"], message: "missing store key", kind: "missing_key" },
+      expect((error as MetadataValidationError).issues).toEqual([
+        { path: ["zarr.json"], message: "missing store key", kind: "missing_key" },
       ]);
     }
   });
@@ -151,7 +153,7 @@ describe("loadStoreJson", () => {
       try {
         loadStoreJson({ key: raw }, "key");
       } catch (error) {
-        kind = (error as MetadataValidationError).problems[0]?.kind;
+        kind = (error as MetadataValidationError).issues[0]?.kind;
       }
       expect(kind).toBe("invalid_json");
     }
@@ -182,12 +184,12 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
   it("reports a problem on a deep consolidated chain instead of throwing", async () => {
     const { validateGroupMetadataV3, validateMetadataV3 } = await import("../src/index.js");
     const deep = nestedGroups(5000);
-    const problems = validateGroupMetadataV3(deep);
+    const problems = flattenTree(validateGroupMetadataV3(deep));
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toContain("nesting depth");
-    expect(validateMetadataV3(deep)).toHaveLength(1);
+    expect(flattenTree(validateMetadataV3(deep))).toHaveLength(1);
     // Shallow chains still validate cleanly.
-    expect(validateGroupMetadataV3(nestedGroups(10))).toEqual([]);
+    expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
   });
 
   it("terminates on a circular consolidated graph", async () => {
@@ -214,7 +216,7 @@ describe("dense-array requirement (round 2)", () => {
     // eslint-style hole: [1, <hole>, 3]
     const holey = [1, , 3]; // eslint-disable-line no-sparse-arrays
     expect(isJson(holey)).toBe(false);
-    expect(validateArrayMetadataV2({
+    expect(flattenTree(validateArrayMetadataV2({
       zarr_format: 2,
       shape: holey,
       chunks: [1, 2, 3],
@@ -223,10 +225,10 @@ describe("dense-array requirement (round 2)", () => {
       fill_value: 0,
       order: "C",
       filters: null,
-    })).toEqual([{ loc: ["shape"], message: "expected a sequence of int", kind: "invalid_type" }]);
-    const problems = validateArrayMetadataV3({ ...VALID_ARRAY, dimension_names: [, "x"] }); // eslint-disable-line no-sparse-arrays
+    }))).toEqual([{ path: ["shape"], message: "expected a sequence of int", kind: "invalid_type" }]);
+    const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, dimension_names: [, "x"] })); // eslint-disable-line no-sparse-arrays
     expect(problems).toEqual([
-      { loc: ["dimension_names"], message: "expected a sequence", kind: "invalid_type" },
+      { path: ["dimension_names"], message: "expected a sequence", kind: "invalid_type" },
     ]);
   });
 });

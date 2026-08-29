@@ -6,29 +6,50 @@ Spec-defined metadata types and structural validators for
 reference implementation), kept in lockstep by a shared conformance corpus.
 
 ```ts
-import { validateMetadataV3, parseArrayMetadataV2 } from "zarr-metadata";
+import {
+  validateMetadataV3,
+  safeParseArrayMetadataV2,
+  isEmptyTree,
+  flattenTree,
+} from "zarr-metadata";
 
-// Every problem, not just the first — each with a machine-readable kind
-// and a loc path from the document root.
-const problems = validateMetadataV3(JSON.parse(text));
-// [{ loc: ["codecs"], kind: "invalid_value", message: "expected at least one codec" }]
+// Validation produces a tree of errors mirroring the document's shape;
+// an empty tree means the document is valid.
+const errors = validateMetadataV3(JSON.parse(text));
+if (!isEmptyTree(errors)) {
+  errors.children.get("codecs"); // the subtree of codec problems
+  flattenTree(errors); // the flat view, for diagnostics:
+  // [{ path: ["codecs"], kind: "invalid_value", message: "expected at least one codec" }]
+}
 
-// Or throw: parse* narrows to the document type or throws
-// MetadataValidationError carrying `.problems`.
-const zarray = parseArrayMetadataV2(JSON.parse(zarrayText));
+// Or the discriminated-union form:
+const result = safeParseArrayMetadataV2(JSON.parse(zarrayText));
+if (result.success) {
+  result.value.shape; // typed as ZarrV2ArrayMetadataJSON
+} else {
+  result.errors; // the ErrorTree
+}
 ```
 
-Each document kind gets three entry points:
+Each document kind gets four entry points:
 
-- `validate*(value)` → `ValidationProblem[]` (empty means valid)
+- `validate*(value)` → `ErrorTree` (empty tree means valid)
+- `safeParse*(value)` → `{ success: true, value } | { success: false, errors }`
 - `is*(value)` → type guard
-- `parse*(value)` → narrowed document or `MetadataValidationError`
+- `parse*(value)` → narrowed document or throws `MetadataValidationError`
+  (which carries the tree as `.errors` and its flat view as `.issues`)
 
 Covered documents: v3 array/group (`zarr.json`, including inline
 `consolidated_metadata`), v2 array/group merged forms (`.zarray` /
 `.zgroup` + `.zattrs`), and v2 consolidated metadata (`.zmetadata`).
-`validateMetadataV3` dispatches on `node_type` for consumers handed an
+The `MetadataV3` family dispatches on `node_type` for consumers handed an
 arbitrary `zarr.json`.
+
+The error-tree shape follows TypeScript validation-library convention
+(compare Zod's `treeifyError` and `safeParse`) rather than the Python
+package's flat problem lists; `flattenTree`/`treeOf` convert between the
+two, and the flat path+kind form remains the cross-language interchange
+format the conformance corpus asserts on.
 
 Validation is structural (key presence, value shapes, fixed literals), not
 domain-level: extension points (codecs, chunk grids, data types) are never
