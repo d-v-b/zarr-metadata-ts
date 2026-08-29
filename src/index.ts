@@ -21,6 +21,7 @@ export {
   type PathedIssue,
 } from "./errors.js";
 export * from "./schemas.js";
+export * from "./semantics.js";
 export type { StandardSchemaV1 } from "./standard-schema.js";
 export * from "./v2.js";
 export * from "./v3.js";

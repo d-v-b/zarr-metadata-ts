@@ -76,9 +76,13 @@ package's flat problem lists; `flattenTree`/`treeOf` convert between the
 two, and the flat path+kind form remains the cross-language interchange
 format the conformance corpus asserts on.
 
-Validation is structural (key presence, value shapes, fixed literals), not
-domain-level: extension points (codecs, chunk grids, data types) are never
-interpreted, matching the Python package's layering.
+The structural validators check key presence, value shapes, and fixed
+literals without interpreting extension points, matching the Python
+package's layering. `validateArraySemanticsV3` is a separate,
+TS-only semantic layer on top: it interprets the well-known core extension
+points to enforce the specs' cross-field prose rules (regular chunk grid
+arity, transpose permutations, sharding divisibility, fill_value vs data
+type), skipping unrecognized names — the extension name space is open.
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).
