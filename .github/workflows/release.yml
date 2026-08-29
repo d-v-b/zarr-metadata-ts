@@ -32,7 +32,20 @@ jobs:
       - run: npm run typecheck
       - run: npx vitest run
       - uses: changesets/action@v1
+        id: changesets
         with:
           publish: npx changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # changeset publish creates the release tag locally but the action has
+      # not been pushing it; publish the tag and a GitHub release with the
+      # version's changelog section explicitly.
+      - name: Push the release tag and create the GitHub release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push --follow-tags
+          version="$(node -p "require('./package.json').version")"
+          notes="$(awk "/^## ${version//./\\.}\$/{flag=1;next}/^## /{flag=0}flag" CHANGELOG.md)"
+          gh release create "v${version}" --title "v${version}" --notes "${notes}"
