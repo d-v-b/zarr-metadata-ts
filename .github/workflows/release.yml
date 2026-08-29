@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions: {}
+
+jobs:
+  release:
+    # Changesets flow: while changesets are pending, this maintains the
+    # "Version Packages" PR; once main is fully versioned (the PR was
+    # merged), it publishes to npm.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      # npm trusted publishing (OIDC): no NPM_TOKEN anywhere. Requires the
+      # one-time setup in RELEASING.md; until then the publish step fails.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # node 24 bundles npm >= 11.5.1, the floor for trusted publishing.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Never publish what CI wouldn't pass.
+      - run: npm run typecheck
+      - run: npx vitest run
+      - uses: changesets/action@v1
+        with:
+          publish: npx changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
