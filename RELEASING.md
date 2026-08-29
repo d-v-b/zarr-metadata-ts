@@ -32,7 +32,7 @@ exists, so the first publish is manual:
 
 2. On npmjs.com → package **Settings** → **Trusted Publisher**, add
    GitHub Actions with:
-   - organization: `zarr-developers`
+   - organization/user: `d-v-b`
    - repository: `zarr-metadata-ts`
    - workflow filename: `release.yml`
    - environment: (leave empty)
@@ -49,12 +49,3 @@ locally with `npm --version` before the manual first publish).
 - Whether `zarr-metadata` should be published unscoped (as currently
   configured) or under an npm scope/org owned by zarr-developers — decide
   before the first publish claims the name.
-
-## While the repo is private
-
-- Every push to `main` runs the Release workflow; until the one-time npm
-  setup above is done, its publish step fails with `ENEEDAUTH` (the
-  Version Packages PR half works regardless). This is expected.
-- npm does not generate provenance attestations for packages built from
-  private repositories — publishes work, but the provenance badge appears
-  only once the repo is public.

@@ -23,11 +23,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zarr-developers/zarr-metadata-ts.git"
+    "url": "git+https://github.com/d-v-b/zarr-metadata-ts.git"
   },
-  "homepage": "https://github.com/zarr-developers/zarr-metadata-ts#readme",
+  "homepage": "https://github.com/d-v-b/zarr-metadata-ts#readme",
   "bugs": {
-    "url": "https://github.com/zarr-developers/zarr-metadata-ts/issues"
+    "url": "https://github.com/d-v-b/zarr-metadata-ts/issues"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -81,7 +81,7 @@ domain-level: extension points (codecs, chunk grids, data types) are never
 interpreted, matching the Python package's layering.
 
 Consumers include the
-[Zarr Metadata VS Code extension](https://github.com/zarr-developers/vscode-zarr).
+[Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).
 
 ## How correctness is maintained
 
