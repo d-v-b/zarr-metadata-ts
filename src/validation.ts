@@ -935,3 +935,36 @@ export function safeParseConsolidatedMetadataV2(
 ): ParseResult<ZarrV2ConsolidatedMetadataJSON> {
   return toResult(value, consolidatedMetadataV2Problems(value));
 }
+
+/**
+ * The extension-field keys of a v3 metadata document that a reader is
+ * obligated to understand.
+ *
+ * Per the v3 spec an extension field is implicitly `must_understand: true`
+ * unless it is an object carrying the explicit member
+ * `"must_understand": false`, and an implementation MUST refuse to open a
+ * node with obligated fields it does not recognize. This reports the
+ * obligation only — which fields a reader actually recognizes is the
+ * reader's business, so these keys are advisory, not validation problems
+ * (the document is structurally valid). Returns `[]` for anything that is
+ * not shaped like a v3 array or group document. The
+ * reference-implementation `consolidated_metadata` convention on groups is
+ * treated as recognized.
+ */
+export function mustUnderstandExtensionFieldsV3(value: unknown): string[] {
+  if (!isPlainObject(value)) return [];
+  const nodeType = value["node_type"];
+  let reserved: ReadonlyArray<string>;
+  if (nodeType === "array") {
+    reserved = ARRAY_METADATA_STANDARD_KEYS_V3;
+  } else if (nodeType === "group") {
+    reserved = [...GROUP_METADATA_STANDARD_KEYS_V3, ZARR_V3_CONSOLIDATED_METADATA_KEY];
+  } else {
+    return [];
+  }
+  return Object.keys(value).filter((key) => {
+    if (reserved.includes(key)) return false;
+    const field = value[key];
+    return !(isPlainObject(field) && field["must_understand"] === false);
+  });
+}

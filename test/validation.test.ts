@@ -11,6 +11,7 @@ import {
   isArrayMetadataV3,
   isEmptyTree,
   MetadataValidationError,
+  mustUnderstandExtensionFieldsV3,
   parseArrayMetadataV3,
   parseJson,
   safeParseArrayMetadataV3,
@@ -141,5 +142,37 @@ describe("formatTree", () => {
     // flattenTree emits a node's own issues before its children's, so the
     // root-level issue leads.
     expect(formatTree(tree)).toBe("<root>: r\ncodecs.0.name: m");
+  });
+});
+
+describe("mustUnderstandExtensionFieldsV3", () => {
+  it("reports obligated extension keys and skips waived and standard ones", () => {
+    expect(
+      mustUnderstandExtensionFieldsV3({
+        ...VALID_ARRAY,
+        "ext:waived": { must_understand: false, payload: 1 },
+        "ext:object": { name: "thing" },
+        "ext:bare": 5,
+      }),
+    ).toEqual(["ext:object", "ext:bare"]);
+    expect(mustUnderstandExtensionFieldsV3(VALID_ARRAY)).toEqual([]);
+    // consolidated_metadata is a recognized convention on groups...
+    expect(
+      mustUnderstandExtensionFieldsV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: null,
+        extra: true,
+      }),
+    ).toEqual(["extra"]);
+    // ...but not on arrays.
+    expect(
+      mustUnderstandExtensionFieldsV3({ ...VALID_ARRAY, consolidated_metadata: null }),
+    ).toEqual(["consolidated_metadata"]);
+  });
+
+  it("returns nothing for values that are not v3 documents", () => {
+    expect(mustUnderstandExtensionFieldsV3(42)).toEqual([]);
+    expect(mustUnderstandExtensionFieldsV3({ zarr_format: 2, weird: 1 })).toEqual([]);
   });
 });
