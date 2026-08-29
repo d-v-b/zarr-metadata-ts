@@ -34,7 +34,7 @@
     "clean": "rm -rf dist",
     "prepack": "npm run clean && npm run build",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "keywords": [
     "zarr",
@@ -42,6 +42,8 @@
     "validation"
   ],
   "devDependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "@types/node": "^26.4.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

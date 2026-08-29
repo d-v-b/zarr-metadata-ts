@@ -39,6 +39,31 @@ Each document kind gets four entry points:
 - `parse*(value)` → narrowed document or throws `MetadataValidationError`
   (which carries the tree as `.errors` and its flat view as `.issues`)
 
+## Standard Schema
+
+Every document kind is also exported as a
+[Standard Schema](https://standardschema.dev) — the interop contract
+implemented by Zod, Valibot, and ArkType — so the validators plug directly
+into anything that accepts standard schemas (tRPC, form libraries, ...):
+
+```ts
+import { metadataV3Schema, type StandardSchemaV1 } from "zarr-metadata";
+
+const result = await metadataV3Schema["~standard"].validate(JSON.parse(text));
+if (result.issues === undefined) {
+  result.value; // ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON
+}
+type Doc = StandardSchemaV1.InferOutput<typeof metadataV3Schema>;
+```
+
+Validation is synchronous; each issue keeps its machine-readable `kind` as
+a spec-permitted extension. The schemas are `jsonValueSchema`,
+`metadataFieldV3Schema`, `{array,group,consolidated}MetadataV3Schema`,
+`metadataV3Schema` (the `zarr.json` dispatcher), and
+`{array,group,consolidated}MetadataV2Schema`. The spec types are vendored
+(the package stays dependency-free); the test suite pins them against the
+official `@standard-schema/spec` package.
+
 Covered documents: v3 array/group (`zarr.json`, including inline
 `consolidated_metadata`), v2 array/group merged forms (`.zarray` /
 `.zgroup` + `.zattrs`), and v2 consolidated metadata (`.zmetadata`).
