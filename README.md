@@ -93,16 +93,21 @@ red until each is fixed.
 
 ## Development
 
-```bash
-npm install
-npm run build       # tsc → dist/
-npm test            # vitest: conformance corpus + unit tests
-```
-
-Check the corpus against the Python reference implementation (needs `uv`;
-`--with` takes the PyPI package or a path to a local zarr-python checkout's
-`packages/zarr-metadata`):
+Development verbs live in the [justfile](justfile) (needs
+[`just`](https://github.com/casey/just), plus `uv` for the conformance
+recipe); `just` with no arguments lists them:
 
 ```bash
-uv run --with zarr-metadata --no-project python scripts/check_conformance.py
+just install       # npm install
+just build         # tsc → dist/
+just test          # vitest: conformance corpus + unit tests
+just typecheck     # sources and tests, including type-level assertions
+just conformance   # corpus vs the Python reference (PyPI by default)
+just check         # everything CI runs
 ```
+
+`just conformance ../zarr-python/packages/zarr-metadata` runs the corpus
+against a local zarr-python checkout instead of the released PyPI package.
+Each recipe wraps a plain npm/uv command, so `just` itself is optional.
+
+Releases are changeset-driven; see [RELEASING.md](RELEASING.md).
