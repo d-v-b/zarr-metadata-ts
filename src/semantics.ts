@@ -277,14 +277,8 @@ function pipelineIssues(
   return issues;
 }
 
-/**
- * Every semantic (cross-field) problem in a v3 array metadata document, as
- * an error tree; an empty tree means no rule found a violation. Values that
- * are not v3 array documents yield an empty tree; run the structural
- * validators for structure.
- */
-export function validateArraySemanticsV3(value: unknown): ErrorTree {
-  if (!isPlainObject(value) || value["node_type"] !== "array") return treeOf([]);
+function arraySemanticsIssues(value: unknown): PathedIssue[] {
+  if (!isPlainObject(value) || value["node_type"] !== "array") return [];
   const issues: PathedIssue[] = [];
   const shape = isIntArray(value["shape"]) ? value["shape"] : undefined;
   const dims = shape?.length;
@@ -367,5 +361,52 @@ export function validateArraySemanticsV3(value: unknown): ErrorTree {
   if (Array.isArray(codecs)) {
     issues.push(...pipelineIssues(codecs, ["codecs"], dims, chunkSizes));
   }
-  return treeOf(issues);
+  return issues;
+}
+
+/**
+ * Every semantic (cross-field) problem in a v3 array metadata document, as
+ * an error tree; an empty tree means no rule found a violation. Values that
+ * are not v3 array documents yield an empty tree; run the structural
+ * validators for structure. See `validateSemanticsV3` for the form that
+ * also descends into a group's inline consolidated metadata.
+ */
+export function validateArraySemanticsV3(value: unknown): ErrorTree {
+  return treeOf(arraySemanticsIssues(value));
+}
+
+// Matches the structural validators' MAX_JSON_DEPTH; the structural layer
+// reports the depth violation, this layer just stops descending.
+const MAX_CONSOLIDATED_DEPTH = 64;
+
+function semanticsIssuesAtDepth(value: unknown, depth: number): PathedIssue[] {
+  if (depth >= MAX_CONSOLIDATED_DEPTH || !isPlainObject(value)) return [];
+  if (value["node_type"] === "array") return arraySemanticsIssues(value);
+  if (value["node_type"] !== "group") return [];
+  const consolidated = value["consolidated_metadata"];
+  if (!isPlainObject(consolidated)) return [];
+  const entries = consolidated["metadata"];
+  if (!isPlainObject(entries)) return [];
+  const issues: PathedIssue[] = [];
+  for (const [key, entry] of Object.entries(entries)) {
+    issues.push(
+      ...semanticsIssuesAtDepth(entry, depth + 1).map((issue) => ({
+        ...issue,
+        path: ["consolidated_metadata", "metadata", key, ...issue.path],
+      })),
+    );
+  }
+  return issues;
+}
+
+/**
+ * Every semantic problem in a v3 metadata document of either node type: an
+ * array document gets the array rules, and a group document's inline
+ * consolidated entries are checked recursively (each entry is a complete
+ * array or group document, and nested groups may carry consolidated
+ * metadata of their own). Issues inside entries are pathed through
+ * `consolidated_metadata.metadata.<key>`.
+ */
+export function validateSemanticsV3(value: unknown): ErrorTree {
+  return treeOf(semanticsIssuesAtDepth(value, 0));
 }

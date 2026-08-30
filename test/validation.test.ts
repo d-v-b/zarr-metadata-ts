@@ -176,3 +176,62 @@ describe("mustUnderstandExtensionFieldsV3", () => {
     expect(mustUnderstandExtensionFieldsV3({ zarr_format: 2, weird: 1 })).toEqual([]);
   });
 });
+
+describe("validateConsolidatedDocumentsV2", () => {
+  it("validates entries by key suffix, leaving unknown suffixes and the envelope layer alone", async () => {
+    const { validateConsolidatedDocumentsV2 } = await import("../src/index.js");
+    const good = {
+      zarr_consolidated_format: 1,
+      metadata: {
+        ".zgroup": { zarr_format: 2 },
+        "a/.zarray": {
+          zarr_format: 2, shape: [10], chunks: [5], dtype: "<f8",
+          compressor: null, fill_value: 0, order: "C", filters: null,
+        },
+        "a/.zattrs": { units: "m" },
+        "a/whatever.json": { anything: true },
+      },
+    };
+    expect(isEmptyTree(validateConsolidatedDocumentsV2(good))).toBe(true);
+    // Non-envelope values produce nothing (the envelope validator owns those).
+    expect(isEmptyTree(validateConsolidatedDocumentsV2(42))).toBe(true);
+    expect(isEmptyTree(validateConsolidatedDocumentsV2({ metadata: "nope" }))).toBe(true);
+  });
+
+  it("reports broken node documents at their entry paths", async () => {
+    const { validateConsolidatedDocumentsV2 } = await import("../src/index.js");
+    const issues = flattenTree(
+      validateConsolidatedDocumentsV2({
+        zarr_consolidated_format: 1,
+        metadata: {
+          "a/.zarray": {
+            zarr_format: 2, shape: [10], chunks: [5, 5], dtype: "<f8",
+            compressor: null, fill_value: 0, order: "C", filters: null,
+          },
+          "b/.zgroup": { zarr_format: 3 },
+          "b/.zattrs": [1, 2],
+        },
+      }),
+    ).map((issue) => [issue.path.join("."), issue.kind]);
+    expect(issues).toEqual([
+      ["metadata.a/.zarray.chunks", "invalid_value"],
+      ["metadata.b/.zgroup.zarr_format", "invalid_value"],
+      ["metadata.b/.zattrs", "invalid_type"],
+    ]);
+  });
+
+  it("rejects an attributes member inside on-disk .zarray and .zgroup entries", async () => {
+    const { validateConsolidatedDocumentsV2 } = await import("../src/index.js");
+    const issues = flattenTree(
+      validateConsolidatedDocumentsV2({
+        zarr_consolidated_format: 1,
+        metadata: {
+          ".zgroup": { zarr_format: 2, attributes: { a: 1 } },
+        },
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.path).toEqual(["metadata", ".zgroup", "attributes"]);
+    expect(issues[0]!.message).toContain("sibling .zattrs");
+  });
+});

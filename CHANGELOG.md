@@ -1,5 +1,20 @@
 # zarr-metadata
 
+## 0.5.0
+
+### Minor Changes
+
+- Consolidated metadata gets full-depth coverage beyond structure. New
+  `validateSemanticsV3` applies the semantic rules to a group's inline
+  consolidated entries recursively (nested groups included), pathing issues
+  through `consolidated_metadata.metadata.<key>`; `validateArraySemanticsV3`
+  is unchanged. New `validateConsolidatedDocumentsV2` interprets `.zmetadata`
+  entries by key suffix — `.zarray`/`.zgroup` as on-disk documents (also
+  rejecting an `attributes` member, which belongs in the sibling `.zattrs`),
+  `.zattrs` as a JSON object — the consumer-side layer the reference model
+  deliberately leaves out; `validateConsolidatedMetadataV2` stays
+  envelope-only for conformance-corpus parity.
+
 ## 0.4.1
 
 ### Patch Changes

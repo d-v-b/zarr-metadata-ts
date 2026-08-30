@@ -4,7 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { flattenTree, isEmptyTree, validateArraySemanticsV3 } from "../src/index.js";
+import {
+  flattenTree,
+  isEmptyTree,
+  validateArraySemanticsV3,
+  validateSemanticsV3,
+} from "../src/index.js";
 
 function array(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -259,6 +264,46 @@ describe("validateArraySemanticsV3", () => {
         }),
       ),
     ).toEqual(["expected a permutation of the integers 0..1"]);
+  });
+
+  it("descends into inline consolidated entries, nested groups included", () => {
+    const doc = {
+      zarr_format: 3,
+      node_type: "group",
+      consolidated_metadata: {
+        kind: "inline",
+        must_understand: false,
+        metadata: {
+          bad_array: array({ data_type: "int32", fill_value: "NaN" }),
+          nested_group: {
+            zarr_format: 3,
+            node_type: "group",
+            consolidated_metadata: {
+              kind: "inline",
+              must_understand: false,
+              metadata: { deeper: array({ data_type: "bool", fill_value: 0 }) },
+            },
+          },
+        },
+      },
+    };
+    // validateArraySemanticsV3 stays array-only...
+    expect(isEmptyTree(validateArraySemanticsV3(doc))).toBe(true);
+    // ...while validateSemanticsV3 paths each entry's issues through the envelope.
+    expect(
+      flattenTree(validateSemanticsV3(doc)).map((issue) => [issue.path.join("."), issue.message]),
+    ).toEqual([
+      [
+        "consolidated_metadata.metadata.bad_array.fill_value",
+        'expected an integer in [-2147483648, 2147483647] for data type "int32"',
+      ],
+      [
+        "consolidated_metadata.metadata.nested_group.consolidated_metadata.metadata.deeper.fill_value",
+        'expected a boolean fill value for data type "bool"',
+      ],
+    ]);
+    // A plain array document goes through the same entry point unchanged.
+    expect(isEmptyTree(validateSemanticsV3(array({})))).toBe(true);
   });
 
   it("rejects fill values that do not fit the core data type", () => {

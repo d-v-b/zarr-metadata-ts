@@ -968,3 +968,53 @@ export function mustUnderstandExtensionFieldsV3(value: unknown): string[] {
     return !(isPlainObject(field) && field["must_understand"] === false);
   });
 }
+
+/**
+ * Per-entry document validation for `.zmetadata` (v2 consolidated) — the
+ * consumer-side interpretation the reference implementation's model
+ * deliberately leaves out (its `metadata` map is kept verbatim). Each entry
+ * is validated by what its key names: `<path>/.zarray` as an on-disk v2
+ * array document, `<path>/.zgroup` as an on-disk v2 group document (both
+ * additionally rejecting an `attributes` member, which on disk lives only
+ * in the sibling `.zattrs` file), and `<path>/.zattrs` as a JSON object.
+ * Keys naming none of the three are left alone.
+ *
+ * This is a TS-only layer over `validateConsolidatedMetadataV2` (which
+ * stays envelope-only for conformance-corpus parity with Python); run both.
+ */
+export function validateConsolidatedDocumentsV2(value: unknown): ErrorTree {
+  if (!isPlainObject(value)) return treeOf([]);
+  const entries = value["metadata"];
+  if (!isPlainObject(entries)) return treeOf([]);
+  const problems: PathedIssue[] = [];
+  const onDisk = (base: PathedIssue[], entry: unknown): PathedIssue[] => {
+    if (isPlainObject(entry) && has(entry, "attributes")) {
+      return [
+        ...base.filter((issue) => issue.path[0] !== "attributes"),
+        problem(
+          ["attributes"],
+          "unexpected document member (on disk, attributes live in the sibling .zattrs file)",
+          "invalid_value",
+        ),
+      ];
+    }
+    return base;
+  };
+  for (const [key, entry] of Object.entries(entries)) {
+    const basename = key.slice(key.lastIndexOf("/") + 1);
+    let entryProblems: PathedIssue[] | undefined;
+    if (basename === ".zarray") {
+      entryProblems = onDisk(arrayMetadataV2Problems(entry), entry);
+    } else if (basename === ".zgroup") {
+      entryProblems = onDisk(groupMetadataV2Problems(entry), entry);
+    } else if (basename === ".zattrs") {
+      entryProblems = isPlainObject(entry)
+        ? jsonProblems(entry)
+        : [problem([], "expected a mapping with string keys", "invalid_type")];
+    }
+    if (entryProblems !== undefined && entryProblems.length > 0) {
+      problems.push(...prefix("metadata", prefix(key, entryProblems)));
+    }
+  }
+  return treeOf(problems);
+}
