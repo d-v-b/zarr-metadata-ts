@@ -55,6 +55,21 @@ describe("validateArraySemanticsV3", () => {
         shape: [],
         chunk_grid: { name: "regular", configuration: { chunk_shape: [] } },
       }),
+      // rectilinear: bare-int shorthand (no sum rule), explicit lists and
+      // RLE pairs summing exactly, and a sharding codec dividing every
+      // distinct chunk size.
+      array({
+        chunk_grid: {
+          name: "rectilinear",
+          configuration: { kind: "inline", chunk_shapes: [6, [4, [2, 4]]] },
+        },
+        codecs: [
+          {
+            name: "sharding_indexed",
+            configuration: { chunk_shape: [2, 2], codecs: ["bytes"], index_codecs: ["bytes"] },
+          },
+        ],
+      }),
       // non-array documents and structural wrecks produce no semantic verdicts
       { zarr_format: 3, node_type: "group" },
       "not a document",
@@ -136,6 +151,53 @@ describe("validateArraySemanticsV3", () => {
         }),
       ),
     ).toEqual(["expected [4,6] to evenly divide the outer chunk shape [6,6]"]);
+  });
+
+  it("rejects a rectilinear chunk_shapes arity mismatch with shape", () => {
+    expect(
+      messages(
+        array({
+          chunk_grid: { name: "rectilinear", configuration: { kind: "inline", chunk_shapes: [12] } },
+        }),
+      ),
+    ).toEqual(["expected one entry per dimension of shape (2)"]);
+  });
+
+  it("rejects explicit rectilinear chunk lists that do not sum to the dimension length", () => {
+    expect(
+      messages(
+        array({
+          chunk_grid: {
+            name: "rectilinear",
+            configuration: { kind: "inline", chunk_shapes: [[4, [3, 2]], [5, 5, 5]] },
+          },
+        }),
+      ),
+    ).toEqual([
+      "expected chunk sizes summing to 12 along dimension 0, got 10",
+      "expected chunk sizes summing to 12 along dimension 1, got 15",
+    ]);
+  });
+
+  it("rejects a sharding chunk_shape that does not divide every rectilinear chunk size", () => {
+    expect(
+      messages(
+        array({
+          chunk_grid: {
+            name: "rectilinear",
+            configuration: { kind: "inline", chunk_shapes: [[4, [2, 4]], 6] },
+          },
+          codecs: [
+            {
+              name: "sharding_indexed",
+              configuration: { chunk_shape: [4, 3], codecs: ["bytes"], index_codecs: ["bytes"] },
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      "expected [4,3] to evenly divide every chunk size of the grid (dimension 0 has chunk size 2)",
+    ]);
   });
 
   it("rejects fill values that do not fit the core data type", () => {

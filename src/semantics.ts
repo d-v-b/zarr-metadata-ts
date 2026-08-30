@@ -8,12 +8,18 @@
  *
  * - the `regular` chunk grid's `chunk_shape` has one length per dimension
  *   of `shape`;
+ * - the `rectilinear` chunk grid's `chunk_shapes` has one entry per
+ *   dimension, and each explicit chunk list (integers and `[size, count]`
+ *   run-length pairs) sums exactly to that dimension's length (the
+ *   bare-integer uniform shorthand carries no sum constraint, like the
+ *   regular grid);
  * - a `transpose` codec's `order` is a permutation of `0..n-1`, with one
  *   entry per array dimension;
  * - a `sharding_indexed` codec's inner `chunk_shape` matches the array's
- *   dimensionality and evenly divides the shape of the chunk it shards
- *   (the regular grid's chunk at the top level, the parent shard's inner
- *   chunk when sharding nests);
+ *   dimensionality and evenly divides every chunk it shards — the grid's
+ *   chunk at the top level (each distinct per-dimension size, for
+ *   rectilinear grids), the parent shard's inner chunk when sharding
+ *   nests;
  * - `fill_value` has a JSON shape permitted for the named core data type
  *   (booleans for `bool`, ranged integers for the int types, numbers /
  *   the "NaN"-family sentinels / width-checked "0x…" strings for the
@@ -140,14 +146,16 @@ function isPermutation(order: number[]): boolean {
 
 /**
  * Walk one codec pipeline. `dims` is the array dimensionality at this point
- * (undefined when unknowable); `outerChunkShape` is the shape of the chunk
- * this pipeline encodes — what a sharding codec's inner chunks must divide.
+ * (undefined when unknowable); `outerChunkSizes` holds the distinct chunk
+ * lengths per dimension this pipeline may encode — what a sharding codec's
+ * inner chunks must divide. A regular grid contributes one size per
+ * dimension; a rectilinear grid may contribute several.
  */
 function pipelineIssues(
   pipeline: unknown[],
   path: Path,
   dims: number | undefined,
-  outerChunkShape: number[] | undefined,
+  outerChunkSizes: number[][] | undefined,
 ): PathedIssue[] {
   const issues: PathedIssue[] = [];
   pipeline.forEach((entry, index) => {
@@ -183,21 +191,37 @@ function pipelineIssues(
           kind: "invalid_value",
         });
       } else if (
-        outerChunkShape !== undefined &&
-        chunkShape.length === outerChunkShape.length &&
-        chunkShape.every((length) => length > 0) &&
-        outerChunkShape.some((outer, axis) => outer % (chunkShape[axis] as number) !== 0)
+        outerChunkSizes !== undefined &&
+        chunkShape.length === outerChunkSizes.length &&
+        chunkShape.every((length) => length > 0)
       ) {
-        issues.push({
-          path: chunkShapePath,
-          message: `expected ${JSON.stringify(chunkShape)} to evenly divide the outer chunk shape ${JSON.stringify(outerChunkShape)}`,
-          kind: "invalid_value",
+        let violation: { axis: number; size: number } | undefined;
+        outerChunkSizes.forEach((sizes, axis) => {
+          if (violation !== undefined) return;
+          const bad = sizes.find((size) => size % (chunkShape[axis] as number) !== 0);
+          if (bad !== undefined) violation = { axis, size: bad };
         });
+        if (violation !== undefined) {
+          const { axis, size } = violation;
+          const uniform = outerChunkSizes.every((sizes) => sizes.length === 1);
+          issues.push({
+            path: chunkShapePath,
+            message: uniform
+              ? `expected ${JSON.stringify(chunkShape)} to evenly divide the outer chunk shape ${JSON.stringify(outerChunkSizes.map((sizes) => sizes[0]))}`
+              : `expected ${JSON.stringify(chunkShape)} to evenly divide every chunk size of the grid (dimension ${axis} has chunk size ${size})`,
+            kind: "invalid_value",
+          });
+        }
       }
       const inner = configuration?.["codecs"];
       if (Array.isArray(inner)) {
         issues.push(
-          ...pipelineIssues(inner, [...path, index, "configuration", "codecs"], dims, chunkShape),
+          ...pipelineIssues(
+            inner,
+            [...path, index, "configuration", "codecs"],
+            dims,
+            chunkShape.map((length) => [length]),
+          ),
         );
       }
       // index_codecs encode the shard index, whose shape differs from the
@@ -220,18 +244,67 @@ export function validateArraySemanticsV3(value: unknown): ErrorTree {
   const dims = shape?.length;
 
   const grid = fieldParts(value["chunk_grid"]);
-  let chunkShape: number[] | undefined;
+  let chunkSizes: number[][] | undefined;
   if (grid?.name === "regular") {
     const configured = grid.configuration?.["chunk_shape"];
     if (isIntArray(configured)) {
-      chunkShape = configured;
       if (dims !== undefined && configured.length !== dims) {
         issues.push({
           path: ["chunk_grid", "configuration", "chunk_shape"],
           message: `expected one length per dimension of shape (${dims})`,
           kind: "invalid_value",
         });
-        chunkShape = undefined; // wrong arity: unusable as division context
+        // wrong arity: unusable as division context
+      } else {
+        chunkSizes = configured.map((length) => [length]);
+      }
+    }
+  } else if (grid?.name === "rectilinear") {
+    const specs = grid.configuration?.["chunk_shapes"];
+    if (Array.isArray(specs)) {
+      if (dims !== undefined && specs.length !== dims) {
+        issues.push({
+          path: ["chunk_grid", "configuration", "chunk_shapes"],
+          message: `expected one entry per dimension of shape (${dims})`,
+          kind: "invalid_value",
+        });
+      } else {
+        const perDim: (number[] | undefined)[] = specs.map((spec, dim) => {
+          // Bare integer: uniform shorthand, no sum constraint (edge chunks
+          // are permitted, as with the regular grid).
+          if (Number.isInteger(spec)) return spec as number > 0 ? [spec as number] : undefined;
+          if (!Array.isArray(spec)) return undefined; // registry schema's problem
+          const sizes = new Set<number>();
+          let total = 0;
+          for (const entry of spec) {
+            if (Number.isInteger(entry)) {
+              sizes.add(entry as number);
+              total += entry as number;
+            } else if (
+              Array.isArray(entry) &&
+              entry.length === 2 &&
+              Number.isInteger(entry[0]) &&
+              Number.isInteger(entry[1])
+            ) {
+              sizes.add(entry[0] as number);
+              total += (entry[0] as number) * (entry[1] as number);
+            } else {
+              return undefined; // malformed entry: registry schema's problem
+            }
+          }
+          const extent = shape?.[dim];
+          if (extent !== undefined && total !== extent) {
+            issues.push({
+              path: ["chunk_grid", "configuration", "chunk_shapes", dim],
+              message: `expected chunk sizes summing to ${extent} along dimension ${dim}, got ${total}`,
+              kind: "invalid_value",
+            });
+          }
+          return [...sizes];
+        });
+        if (perDim.every((sizes) => sizes !== undefined)) {
+          chunkSizes = perDim as number[][];
+        }
       }
     }
   }
@@ -246,7 +319,7 @@ export function validateArraySemanticsV3(value: unknown): ErrorTree {
 
   const codecs = value["codecs"];
   if (Array.isArray(codecs)) {
-    issues.push(...pipelineIssues(codecs, ["codecs"], dims, chunkShape));
+    issues.push(...pipelineIssues(codecs, ["codecs"], dims, chunkSizes));
   }
   return treeOf(issues);
 }

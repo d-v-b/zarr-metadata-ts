@@ -1,5 +1,17 @@
 # zarr-metadata
 
+## 0.4.0
+
+### Minor Changes
+
+- `validateArraySemanticsV3` now interprets the `rectilinear` chunk grid:
+  `chunk_shapes` must have one entry per dimension of `shape`, explicit chunk
+  lists (integers and `[size, count]` run-length pairs) must sum exactly to
+  their dimension's length (the bare-integer uniform shorthand carries no sum
+  constraint), and a `sharding_indexed` codec's inner chunks must now evenly
+  divide every distinct per-dimension chunk size of the grid — uniform or
+  rectilinear — rather than only a regular grid's chunk shape.
+
 ## 0.3.0
 
 ### Minor Changes
