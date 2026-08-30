@@ -25,6 +25,14 @@
  *   the "NaN"-family sentinels / width-checked "0x…" strings for the
  *   float types, two-element arrays for the complex types).
  *
+ * Dimensional context is THREADED through codec pipelines rather than
+ * assumed constant (mirroring zarr-python's chunk-spec threading): a valid
+ * `transpose` permutes the per-dimension chunk sizes for the codecs after
+ * it, and any codec this layer cannot reason about — `reshape` may change
+ * a chunk's rank, and unknown codecs may do anything — invalidates the
+ * dimensional context for the rest of the pipeline instead of letting
+ * stale array-level facts produce false verdicts.
+ *
  * Unrecognized names are skipped everywhere — the extension name space is
  * open, and a rule that guessed would lie. This layer has no counterpart
  * in the Python reference implementation (which stops at structure), so it
@@ -154,19 +162,36 @@ function isPermutation(order: number[]): boolean {
 function pipelineIssues(
   pipeline: unknown[],
   path: Path,
-  dims: number | undefined,
-  outerChunkSizes: number[][] | undefined,
+  initialDims: number | undefined,
+  initialChunkSizes: number[][] | undefined,
 ): PathedIssue[] {
   const issues: PathedIssue[] = [];
+  // The dimensional context THREADS through the pipeline: transpose permutes
+  // it, and anything this layer cannot reason about invalidates it for the
+  // remaining codecs.
+  let dims = initialDims;
+  let chunkSizes = initialChunkSizes;
+  const dropContext = (): void => {
+    dims = undefined;
+    chunkSizes = undefined;
+  };
   pipeline.forEach((entry, index) => {
     const parts = fieldParts(entry);
-    if (parts === undefined) return;
+    if (parts === undefined) {
+      dropContext(); // structurally invalid entry: no further reasoning
+      return;
+    }
     const { name, configuration } = parts;
     if (name === "transpose") {
       const order = configuration?.["order"];
-      if (!isIntArray(order)) return; // shape errors are the schema layer's
+      if (!isIntArray(order)) {
+        dropContext(); // shape errors are the schema layer's
+        return;
+      }
       const orderPath = [...path, index, "configuration", "order"];
+      let sound = true;
       if (!isPermutation(order)) {
+        sound = false;
         issues.push({
           path: orderPath,
           message: `expected a permutation of the integers 0..${order.length - 1}`,
@@ -174,15 +199,28 @@ function pipelineIssues(
         });
       }
       if (dims !== undefined && order.length !== dims) {
+        sound = false;
         issues.push({
           path: orderPath,
           message: `expected one entry per array dimension (${dims})`,
           kind: "invalid_value",
         });
       }
+      if (!sound) {
+        dropContext();
+      } else if (chunkSizes !== undefined) {
+        const sizes = chunkSizes;
+        chunkSizes =
+          order.length === sizes.length
+            ? order.map((axis) => sizes[axis] as number[])
+            : undefined;
+      }
     } else if (name === "sharding_indexed") {
       const chunkShape = configuration?.["chunk_shape"];
-      if (!isIntArray(chunkShape)) return;
+      if (!isIntArray(chunkShape)) {
+        dropContext();
+        return;
+      }
       const chunkShapePath = [...path, index, "configuration", "chunk_shape"];
       if (dims !== undefined && chunkShape.length !== dims) {
         issues.push({
@@ -191,23 +229,24 @@ function pipelineIssues(
           kind: "invalid_value",
         });
       } else if (
-        outerChunkSizes !== undefined &&
-        chunkShape.length === outerChunkSizes.length &&
+        chunkSizes !== undefined &&
+        chunkShape.length === chunkSizes.length &&
         chunkShape.every((length) => length > 0)
       ) {
         let violation: { axis: number; size: number } | undefined;
-        outerChunkSizes.forEach((sizes, axis) => {
+        chunkSizes.forEach((sizes, axis) => {
           if (violation !== undefined) return;
           const bad = sizes.find((size) => size % (chunkShape[axis] as number) !== 0);
           if (bad !== undefined) violation = { axis, size: bad };
         });
         if (violation !== undefined) {
           const { axis, size } = violation;
-          const uniform = outerChunkSizes.every((sizes) => sizes.length === 1);
+          const sizesNow = chunkSizes;
+          const uniform = sizesNow.every((sizes) => sizes.length === 1);
           issues.push({
             path: chunkShapePath,
             message: uniform
-              ? `expected ${JSON.stringify(chunkShape)} to evenly divide the outer chunk shape ${JSON.stringify(outerChunkSizes.map((sizes) => sizes[0]))}`
+              ? `expected ${JSON.stringify(chunkShape)} to evenly divide the outer chunk shape ${JSON.stringify(sizesNow.map((sizes) => sizes[0]))}`
               : `expected ${JSON.stringify(chunkShape)} to evenly divide every chunk size of the grid (dimension ${axis} has chunk size ${size})`,
             kind: "invalid_value",
           });
@@ -219,13 +258,20 @@ function pipelineIssues(
           ...pipelineIssues(
             inner,
             [...path, index, "configuration", "codecs"],
-            dims,
+            chunkShape.length,
             chunkShape.map((length) => [length]),
           ),
         );
       }
       // index_codecs encode the shard index, whose shape differs from the
-      // array's — no dimensional context applies there.
+      // array's — no dimensional context applies there. After the
+      // array -> bytes boundary the dimensional context is spent.
+      dropContext();
+    } else {
+      // A codec this layer cannot reason about (reshape may change a
+      // chunk's rank; unknown codecs may do anything): stale array-level
+      // facts must not judge the codecs after it.
+      dropContext();
     }
   });
   return issues;

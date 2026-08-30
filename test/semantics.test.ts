@@ -70,6 +70,31 @@ describe("validateArraySemanticsV3", () => {
           },
         ],
       }),
+      // context threading: reshape may change the chunk's rank, so the
+      // rank-4 transpose after it must not be judged by the array's rank
+      // (the reshape spec explicitly endorses this combination)
+      array({
+        shape: [6, 6, 6],
+        chunk_grid: { name: "regular", configuration: { chunk_shape: [6, 6, 6] } },
+        codecs: [
+          { name: "reshape", configuration: { shape: [[0], [1], 2, 3] } },
+          { name: "transpose", configuration: { order: [3, 2, 1, 0] } },
+          "bytes",
+        ],
+      }),
+      // context threading: transpose permutes the chunk sizes the shard
+      // must divide
+      array({
+        shape: [8, 12],
+        chunk_grid: { name: "regular", configuration: { chunk_shape: [4, 6] } },
+        codecs: [
+          { name: "transpose", configuration: { order: [1, 0] } },
+          {
+            name: "sharding_indexed",
+            configuration: { chunk_shape: [3, 4], codecs: ["bytes"], index_codecs: ["bytes"] },
+          },
+        ],
+      }),
       // non-array documents and structural wrecks produce no semantic verdicts
       { zarr_format: 3, node_type: "group" },
       "not a document",
@@ -198,6 +223,42 @@ describe("validateArraySemanticsV3", () => {
     ).toEqual([
       "expected [4,3] to evenly divide every chunk size of the grid (dimension 0 has chunk size 2)",
     ]);
+  });
+
+  it("rejects a shard sized for the un-permuted chunk after a transpose", () => {
+    expect(
+      messages(
+        array({
+          shape: [8, 12],
+          chunk_grid: { name: "regular", configuration: { chunk_shape: [4, 6] } },
+          codecs: [
+            { name: "transpose", configuration: { order: [1, 0] } },
+            {
+              name: "sharding_indexed",
+              configuration: { chunk_shape: [4, 6], codecs: ["bytes"], index_codecs: ["bytes"] },
+            },
+          ],
+        }),
+      ),
+    ).toEqual(["expected [4,6] to evenly divide the outer chunk shape [6,4]"]);
+  });
+
+  it("makes no dimensional claims after an invalid transpose", () => {
+    // The bad order is reported, but the sharding checks downstream of it
+    // are suppressed: the chunk's true shape is unknowable from here.
+    expect(
+      messages(
+        array({
+          codecs: [
+            { name: "transpose", configuration: { order: [0, 0] } },
+            {
+              name: "sharding_indexed",
+              configuration: { chunk_shape: [5, 5], codecs: ["bytes"], index_codecs: ["bytes"] },
+            },
+          ],
+        }),
+      ),
+    ).toEqual(["expected a permutation of the integers 0..1"]);
   });
 
   it("rejects fill values that do not fit the core data type", () => {

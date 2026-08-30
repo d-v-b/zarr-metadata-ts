@@ -1,5 +1,19 @@
 # zarr-metadata
 
+## 0.4.1
+
+### Patch Changes
+
+- `validateArraySemanticsV3` now threads dimensional context through codec
+  pipelines instead of assuming it constant (mirroring zarr-python's
+  chunk-spec threading, d-v-b/zarr-python#303): a valid `transpose` permutes
+  the per-dimension chunk sizes downstream shards must divide, and any codec
+  the layer cannot reason about — `reshape` may change a chunk's rank,
+  unknown codecs may do anything — invalidates the dimensional context for
+  the rest of the pipeline. Fixes false rejections of spec-endorsed
+  reshape→transpose chains and of shards sized for the transposed chunk, and
+  a missed rejection of shards sized for the un-transposed chunk.
+
 ## 0.4.0
 
 ### Minor Changes
