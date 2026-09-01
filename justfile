@@ -10,17 +10,21 @@ default:
 install:
     npm install
 
+# Fetch dependencies when node_modules is missing (fresh clone / new machine)
+_deps:
+    @[ -d node_modules ] || npm install
+
 # Compile src/ to dist/
-build:
+build: _deps
     npm run build
 
 # Run the test suite; extra args are passed to vitest
-test *args:
+test *args: _deps
     npx vitest run {{ args }}
 
 # Type-check the package sources and the test suite (including the
 # expectTypeOf assertions, which only exist under the type checker)
-typecheck:
+typecheck: _deps
     npm run typecheck
 
 # Run the shared conformance corpus against the Python reference
