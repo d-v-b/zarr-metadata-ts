@@ -1,5 +1,18 @@
 # zarr-metadata
 
+## 0.8.0
+
+### Minor Changes
+
+- The semantic layer is reorganized by content rather than by level of
+  description: `chunk-grids.ts`, `codecs.ts`, and `data-types.ts` each hold
+  the syntax (now-exported configuration types such as
+  `RegularChunkGridConfiguration` and `ShardingIndexedCodecConfiguration`)
+  and semantics for the names the package interprets, with `semantics.ts`
+  reduced to the document-walking orchestrator. Behavior is unchanged (the
+  full test suite passes untouched); the structural document layer stays
+  content-agnostic and corpus-governed by design.
+
 ## 0.7.0
 
 ### Minor Changes

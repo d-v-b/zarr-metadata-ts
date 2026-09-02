@@ -78,11 +78,14 @@ format the conformance corpus asserts on.
 
 The structural validators check key presence, value shapes, and fixed
 literals without interpreting extension points, matching the Python
-package's layering. `validateArraySemanticsV3` is a separate,
-TS-only semantic layer on top: it interprets the well-known core extension
-points to enforce the specs' cross-field prose rules (regular chunk grid
-arity, transpose permutations, sharding divisibility, fill_value vs data
-type), skipping unrecognized names — the extension name space is open.
+package's layering. The semantic layer (`validateSemanticsV3` /
+`validateArraySemanticsV3`) is TS-only and sits on top, organized by
+content: `chunk-grids.ts`, `codecs.ts`, and `data-types.ts` each hold the
+syntax (configuration types) and semantics (required members, cross-field
+prose rules — grid arity and sums, transpose permutations, sharding
+divisibility, fill_value vs data type) for the names the package
+interprets, with `semantics.ts` as the document-walking orchestrator.
+Unrecognized names are skipped — the extension name space is open.
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).
