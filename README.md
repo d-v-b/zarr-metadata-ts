@@ -96,7 +96,7 @@ Consumers include the
 
 ## How correctness is maintained
 
-The [conformance corpus](conformance/) is the contract with the Python
+The [conformance corpus](https://github.com/d-v-b/zarr-metadata.js/tree/main/conformance) is the contract with the Python
 reference implementation: shared JSON fixtures asserting the exact problem
 set (loc + kind) each document must produce. Both test suites run every
 case; a spec change updates the corpus first, turning both implementations

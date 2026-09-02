@@ -44,3 +44,11 @@ check: typecheck test conformance
 # Remove build output
 clean:
     npm run clean
+
+# Build the API reference (TypeDoc) into site/
+docs: _deps
+    npm run docs
+
+# Build and serve the API reference locally
+docs-serve: docs
+    python3 -m http.server --directory site 8123

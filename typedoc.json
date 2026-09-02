@@ -1,0 +1,12 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "site",
+  "name": "zarr-metadata",
+  "navigationLinks": {
+    "GitHub": "https://github.com/d-v-b/zarr-metadata.js",
+    "npm": "https://www.npmjs.com/package/zarr-metadata"
+  },
+  "excludeInternal": true,
+  "hideGenerator": true
+}
