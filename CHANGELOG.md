@@ -1,5 +1,18 @@
 # zarr-metadata
 
+## 0.7.0
+
+### Minor Changes
+
+- The semantic layer's required-configuration rules now cover every name it
+  interprets: `transpose` requires a configuration with `order`, and
+  `sharding_indexed` requires one with `chunk_shape`, `codecs`, and
+  `index_codecs` (a present inner pipeline is still judged even when
+  `chunk_shape` is missing). Names the layer does not interpret (blosc,
+  gzip, zstd, extension data types) are deliberately excluded — their
+  required fields are registry-schema facts enforced by schema-driven
+  tooling, and duplicating them as hardcoded rules would drift.
+
 ## 0.6.0
 
 ### Minor Changes

@@ -369,3 +369,48 @@ describe("chunk grid configuration requirements", () => {
     expect(messages(array({ chunk_grid: { name: "regular", configuration: 5 } }))).toEqual([]);
   });
 });
+
+describe("codec configuration requirements", () => {
+  it("requires order for transpose and the three sharding members", () => {
+    expect(messages(array({ codecs: ["transpose", "bytes"] }))).toEqual([
+      '"transpose" requires a configuration with "order"',
+    ]);
+    expect(messages(array({ codecs: [{ name: "transpose", configuration: {} }, "bytes"] }))).toEqual(
+      ["missing required key"],
+    );
+    expect(messages(array({ codecs: ["sharding_indexed"] }))).toEqual([
+      '"sharding_indexed" requires a configuration with "chunk_shape", "codecs", and "index_codecs"',
+    ]);
+    expect(
+      messages(
+        array({
+          codecs: [{ name: "sharding_indexed", configuration: { chunk_shape: [6, 6] } }],
+        }),
+      ).sort(),
+    ).toEqual(["missing required key", "missing required key"]);
+  });
+
+  it("still judges a present inner pipeline when sharding's chunk_shape is missing", () => {
+    expect(
+      messages(
+        array({
+          codecs: [
+            {
+              name: "sharding_indexed",
+              configuration: {
+                codecs: [{ name: "transpose", configuration: { order: [0, 0] } }, "bytes"],
+                index_codecs: ["bytes"],
+              },
+            },
+          ],
+        }),
+      ).sort(),
+    ).toEqual(["expected a permutation of the integers 0..1", "missing required key"]);
+  });
+
+  it("leaves the uninterpreted codecs' required fields to the registry schemas", () => {
+    // gzip/blosc/zstd requirements are registry-schema facts, not semantic
+    // rules — a second hardcoded source of truth would drift.
+    expect(messages(array({ codecs: ["bytes", "gzip"] }))).toEqual([]);
+  });
+});

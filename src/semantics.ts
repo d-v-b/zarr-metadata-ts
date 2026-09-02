@@ -13,9 +13,11 @@
  *   explicit chunk list (integers and `[size, count]` run-length pairs)
  *   sums exactly to that dimension's length (the bare-integer uniform
  *   shorthand carries no sum constraint, like the regular grid);
- * - a `transpose` codec's `order` is a permutation of `0..n-1`, with one
- *   entry per array dimension;
- * - a `sharding_indexed` codec's inner `chunk_shape` matches the array's
+ * - a `transpose` codec requires a configuration with `order`, a
+ *   permutation of `0..n-1` with one entry per array dimension;
+ * - a `sharding_indexed` codec requires a configuration with
+ *   `chunk_shape`, `codecs`, and `index_codecs`; its inner `chunk_shape`
+ *   matches the array's
  *   dimensionality and evenly divides every chunk it shards — the grid's
  *   chunk at the top level (each distinct per-dimension size, for
  *   rectilinear grids), the parent shard's inner chunk when sharding
@@ -33,8 +35,12 @@
  * dimensional context for the rest of the pipeline instead of letting
  * stale array-level facts produce false verdicts.
  *
- * Unrecognized names are skipped everywhere — the extension name space is
- * open, and a rule that guessed would lie. This layer has no counterpart
+ * Required-configuration rules cover ONLY the names this layer interprets
+ * (the two grids, transpose, sharding). Other extensions' required fields
+ * are registry-schema facts — the editor's registry layer enforces them
+ * from the vendored schemas, and duplicating that knowledge here as
+ * hardcoded rules would drift. Unrecognized names are skipped everywhere —
+ * the extension name space is open, and a rule that guessed would lie. This layer has no counterpart
  * in the Python reference implementation (which stops at structure), so it
  * is covered by this package's own tests rather than the conformance
  * corpus.
@@ -182,7 +188,30 @@ function pipelineIssues(
       return;
     }
     const { name, configuration } = parts;
+    // Whether the entry genuinely lacks a configuration member (a malformed
+    // one is the structural layer's complaint, not ours).
+    const configMissing =
+      typeof entry === "string" ||
+      (isPlainObject(entry) && !Object.hasOwn(entry, "configuration"));
     if (name === "transpose") {
+      if (configMissing) {
+        issues.push({
+          path: [...path, index],
+          message: '"transpose" requires a configuration with "order"',
+          kind: "missing_key",
+        });
+        dropContext();
+        return;
+      }
+      if (configuration !== undefined && !Object.hasOwn(configuration, "order")) {
+        issues.push({
+          path: [...path, index, "configuration", "order"],
+          message: "missing required key",
+          kind: "missing_key",
+        });
+        dropContext();
+        return;
+      }
       const order = configuration?.["order"];
       if (!isIntArray(order)) {
         dropContext(); // shape errors are the schema layer's
@@ -216,8 +245,42 @@ function pipelineIssues(
             : undefined;
       }
     } else if (name === "sharding_indexed") {
+      if (configMissing) {
+        issues.push({
+          path: [...path, index],
+          message:
+            '"sharding_indexed" requires a configuration with "chunk_shape", "codecs", and "index_codecs"',
+          kind: "missing_key",
+        });
+        dropContext();
+        return;
+      }
+      if (configuration !== undefined) {
+        for (const key of ["chunk_shape", "codecs", "index_codecs"]) {
+          if (!Object.hasOwn(configuration, key)) {
+            issues.push({
+              path: [...path, index, "configuration", key],
+              message: "missing required key",
+              kind: "missing_key",
+            });
+          }
+        }
+      }
       const chunkShape = configuration?.["chunk_shape"];
       if (!isIntArray(chunkShape)) {
+        // Still walk a present inner pipeline (entries deserve their own
+        // verdicts) before the context becomes unknowable.
+        const inner = configuration?.["codecs"];
+        if (Array.isArray(inner)) {
+          issues.push(
+            ...pipelineIssues(
+              inner,
+              [...path, index, "configuration", "codecs"],
+              undefined,
+              undefined,
+            ),
+          );
+        }
         dropContext();
         return;
       }
