@@ -25,12 +25,23 @@ export type {
   RectilinearChunkGridConfiguration,
   RectilinearDimSpec,
   RegularChunkGridConfiguration,
-} from "./chunk-grid.js";
+} from "./chunk-grid/index.js";
 export type {
   ShardingIndexedCodecConfiguration,
   TransposeCodecConfiguration,
-} from "./codec.js";
-export type { ComplexFillValue, FloatFillValue } from "./data-type.js";
+} from "./codec/index.js";
+export type {
+  BytesFillValue,
+  ComplexFillValue,
+  FloatFillValue,
+  NumpyDatetime64Configuration,
+  NumpyDatetime64FillValue,
+  NumpyTimeUnit,
+  RawBytesFillValue,
+  StringFillValue,
+  StructConfiguration,
+  StructField,
+} from "./data-type/index.js";
 export * from "./schemas.js";
 export * from "./semantics.js";
 export type { StandardSchemaV1 } from "./standard-schema.js";

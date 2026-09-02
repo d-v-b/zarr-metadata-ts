@@ -80,12 +80,16 @@ The structural validators check key presence, value shapes, and fixed
 literals without interpreting extension points, matching the Python
 package's layering. The semantic layer (`validateSemanticsV3` /
 `validateArraySemanticsV3`) is TS-only and sits on top, organized by
-content: `chunk-grid.ts`, `codec.ts`, and `data-type.ts` each hold the
-syntax (configuration types) and semantics (required members, cross-field
-prose rules — grid arity and sums, transpose permutations, sharding
-divisibility, fill_value vs data type) for the names the package
-interprets, with `semantics.ts` as the document-walking orchestrator.
-Unrecognized names are skipped — the extension name space is open.
+content: `chunk-grid/`, `codec/`, and `data-type/` hold one module per
+interpreted name, each with its syntax (configuration and fill-value
+types) and semantics (required members, cross-field prose rules — grid
+arity and sums, transpose permutations, sharding divisibility, fill_value
+vs data type). Interpreted data types cover the core scalars, the `r<N>`
+raw-bits family, and the established zarr-extensions conventions —
+`string`, `bytes`, `numpy.datetime64`/`timedelta64`, and `struct` (whose
+fill is judged per field, recursively). `semantics.ts` is the
+document-walking orchestrator. Unrecognized names are skipped — the
+extension name space is open.
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).

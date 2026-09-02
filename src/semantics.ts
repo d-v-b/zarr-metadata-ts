@@ -1,10 +1,10 @@
 /**
  * Semantic (cross-field) validation for v3 array metadata: the
  * orchestrator. The rules themselves live with their content —
- * `chunk-grid.ts`, `codec.ts`, and `data-type.ts` each hold the syntax
- * (types) and semantics (procedures) for the names this package
- * interprets, mirroring how the spec, the Python reference's type layout,
- * and the zarr-extensions registry are organized. This module only walks
+ * `chunk-grid/`, `codec/`, and `data-type/` hold one module per
+ * interpreted name (grids, codecs, data types), each with its syntax
+ * (types) and semantics (procedures), mirroring how the spec, the Python
+ * reference's type layout, and the zarr-extensions registry are organized. This module only walks
  * documents: extract shape, ask each content module for its verdicts,
  * thread the chunk-size context into codec pipelines, and descend into a
  * group's inline consolidated entries.
@@ -18,11 +18,11 @@
  * modules.
  */
 
-import { chunkGridVerdict } from "./chunk-grid.js";
-import { pipelineIssues } from "./codec.js";
-import { fillValueIssue } from "./data-type.js";
+import { chunkGridVerdict } from "./chunk-grid/index.js";
+import { pipelineIssues } from "./codec/index.js";
+import { dataTypeVerdict } from "./data-type/index.js";
 import { treeOf, type ErrorTree, type PathedIssue } from "./errors.js";
-import { fieldParts, isIntArray, isPlainObject } from "./guards.js";
+import { isIntArray, isPlainObject } from "./guards.js";
 
 function arraySemanticsIssues(value: unknown): PathedIssue[] {
   if (!isPlainObject(value) || value["node_type"] !== "array") return [];
@@ -34,13 +34,7 @@ function arraySemanticsIssues(value: unknown): PathedIssue[] {
     ...grid.issues.map((issue) => ({ ...issue, path: ["chunk_grid", ...issue.path] })),
   );
 
-  const dataType = fieldParts(value["data_type"]);
-  if (dataType !== undefined && "fill_value" in value) {
-    const message = fillValueIssue(dataType.name, value["fill_value"]);
-    if (message !== undefined) {
-      issues.push({ path: ["fill_value"], message, kind: "invalid_value" });
-    }
-  }
+  issues.push(...dataTypeVerdict(value["data_type"], "fill_value" in value, value["fill_value"]));
 
   const codecs = value["codecs"];
   if (Array.isArray(codecs)) {

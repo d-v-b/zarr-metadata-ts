@@ -414,3 +414,145 @@ describe("codec configuration requirements", () => {
     expect(messages(array({ codecs: ["bytes", "gzip"] }))).toEqual([]);
   });
 });
+
+describe("convention data types", () => {
+  it("accepts valid fills across the convention types", () => {
+    const structType = {
+      name: "struct",
+      configuration: {
+        fields: [
+          { name: "temperature", data_type: "float64" },
+          { name: "flags", data_type: "uint8" },
+          {
+            name: "position",
+            data_type: {
+              name: "struct",
+              configuration: { fields: [{ name: "x", data_type: "int32" }] },
+            },
+          },
+        ],
+      },
+    };
+    const valid = [
+      array({ data_type: "string", fill_value: "missing" }),
+      array({ data_type: "bytes", fill_value: [0, 255, 128] }),
+      array({ data_type: "bytes", fill_value: "AQID" }),
+      array({
+        data_type: { name: "numpy.datetime64", configuration: { unit: "ns", scale_factor: 1 } },
+        fill_value: "NaT",
+      }),
+      array({
+        data_type: { name: "numpy.timedelta64", configuration: { unit: "s", scale_factor: 10 } },
+        fill_value: -42,
+      }),
+      array({ data_type: "r16", fill_value: [0, 1] }),
+      array({
+        data_type: structType,
+        fill_value: { temperature: "NaN", flags: 7, position: { x: 0 } },
+      }),
+    ];
+    for (const document of valid) {
+      expect(messages(document), JSON.stringify(document)).toEqual([]);
+    }
+  });
+
+  it("rejects a non-string fill for string", () => {
+    expect(messages(array({ data_type: "string", fill_value: 0 }))).toEqual([
+      'expected a string fill value for data type "string"',
+    ]);
+  });
+
+  it("rejects bytes fills that are neither byte arrays nor base64", () => {
+    expect(messages(array({ data_type: "bytes", fill_value: [0, 256] }))).toEqual([
+      'expected an array of integers in [0, 255] or a base64 string for data type "bytes"',
+    ]);
+    expect(messages(array({ data_type: "bytes", fill_value: "not base64!" }))).toEqual([
+      'expected an array of integers in [0, 255] or a base64 string for data type "bytes"',
+    ]);
+  });
+
+  it("requires unit and scale_factor for the numpy temporal types", () => {
+    expect(messages(array({ data_type: "numpy.datetime64", fill_value: 0 }))).toEqual([
+      '"numpy.datetime64" requires a configuration with "unit" and "scale_factor"',
+    ]);
+    expect(
+      messages(
+        array({
+          data_type: { name: "numpy.timedelta64", configuration: { unit: "s" } },
+          fill_value: 0,
+        }),
+      ),
+    ).toEqual(["missing required key"]);
+  });
+
+  it("rejects a non-integer fill for the numpy temporal types", () => {
+    expect(
+      messages(
+        array({
+          data_type: { name: "numpy.datetime64", configuration: { unit: "ns", scale_factor: 1 } },
+          fill_value: "2020-01-01",
+        }),
+      ),
+    ).toEqual(['expected an integer or "NaT" for data type "numpy.datetime64"']);
+  });
+
+  it("rejects r<N> names that are not multiples of 8 and wrong-length fills", () => {
+    expect(messages(array({ data_type: "r12", fill_value: [0] }))).toEqual([
+      'expected "r<N>" with N a positive multiple of 8, got "r12"',
+    ]);
+    expect(messages(array({ data_type: "r16", fill_value: [0] }))).toEqual([
+      'expected an array of 2 integers in [0, 255] for data type "r16"',
+    ]);
+  });
+
+  it("requires fields for struct and judges its fill per field, recursively", () => {
+    expect(messages(array({ data_type: "struct", fill_value: {} }))).toEqual([
+      '"struct" requires a configuration with "fields"',
+    ]);
+    const structType = {
+      name: "struct",
+      configuration: {
+        fields: [
+          { name: "a", data_type: "int8" },
+          {
+            name: "b",
+            data_type: {
+              name: "struct",
+              configuration: { fields: [{ name: "c", data_type: "bool" }] },
+            },
+          },
+        ],
+      },
+    };
+    expect(
+      flattenTree(
+        validateArraySemanticsV3(
+          array({ data_type: structType, fill_value: { a: 300, b: { c: 1 }, extra: 0 } }),
+        ),
+      ).map((issue) => [issue.path.join("."), issue.message]),
+    ).toEqual([
+      ["fill_value.a", 'expected an integer in [-128, 127] for data type "int8"'],
+      ["fill_value.b.c", 'expected a boolean fill value for data type "bool"'],
+      ["fill_value.extra", "unexpected member (no such struct field)"],
+    ]);
+    expect(
+      flattenTree(
+        validateArraySemanticsV3(array({ data_type: structType, fill_value: { a: 1 } })),
+      ).map((issue) => issue.path.join(".")),
+    ).toEqual(["fill_value.b"]);
+  });
+
+  it("rejects a non-object fill for struct", () => {
+    expect(
+      messages(
+        array({
+          data_type: {
+            name: "struct",
+            configuration: { fields: [{ name: "a", data_type: "int8" }] },
+          },
+          fill_value: 5,
+        }),
+      ),
+    ).toEqual(['expected an object mapping field names to fill values for data type "struct"']);
+  });
+});

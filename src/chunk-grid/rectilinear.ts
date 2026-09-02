@@ -1,17 +1,7 @@
-/**
- * The chunk grids this package interprets: syntax (configuration types) and
- * semantics (the spec's prose rules) for `regular` and `rectilinear`, in
- * one place per grid. The structural document layer never reads this
- * module — extension points are uninterpreted there by spec design.
- */
-
-import type { PathedIssue } from "./errors.js";
-import { configurationMissing, fieldParts, isIntArray, isPlainObject } from "./guards.js";
-
-/** Configuration of the core `regular` chunk grid. */
-export interface RegularChunkGridConfiguration {
-  chunk_shape: number[];
-}
+/** The zarr-extensions `rectilinear` chunk grid: syntax and semantics. */
+import type { PathedIssue } from "../errors.js";
+import { configurationMissing, fieldParts, isIntArray } from "../guards.js";
+import type { ChunkGridVerdict } from "./index.js";
 
 /**
  * One dimension's spec in a rectilinear grid: a bare integer (uniform
@@ -26,51 +16,7 @@ export interface RectilinearChunkGridConfiguration {
   chunk_shapes: RectilinearDimSpec[];
 }
 
-/** What interpreting a chunk grid yields for the rest of the semantic layer. */
-export interface ChunkGridVerdict {
-  /** Issues, pathed relative to the `chunk_grid` field. */
-  issues: PathedIssue[];
-  /**
-   * Distinct chunk lengths per dimension — the division context a
-   * sharding codec's inner chunks must satisfy — when derivable.
-   */
-  chunkSizes: number[][] | undefined;
-}
-
-function regularIssues(rawGrid: unknown, shape: number[] | undefined): ChunkGridVerdict {
-  const issues: PathedIssue[] = [];
-  let chunkSizes: number[][] | undefined;
-  const configuration = fieldParts(rawGrid)?.configuration;
-  if (configurationMissing(rawGrid)) {
-    issues.push({
-      path: [],
-      message: '"regular" requires a configuration with "chunk_shape"',
-      kind: "missing_key",
-    });
-  } else if (configuration !== undefined && !Object.hasOwn(configuration, "chunk_shape")) {
-    issues.push({
-      path: ["configuration", "chunk_shape"],
-      message: "missing required key",
-      kind: "missing_key",
-    });
-  }
-  const configured = configuration?.["chunk_shape"];
-  if (isIntArray(configured)) {
-    if (shape !== undefined && configured.length !== shape.length) {
-      issues.push({
-        path: ["configuration", "chunk_shape"],
-        message: `expected one length per dimension of shape (${shape.length})`,
-        kind: "invalid_value",
-      });
-      // wrong arity: unusable as division context
-    } else {
-      chunkSizes = configured.map((length) => [length]);
-    }
-  }
-  return { issues, chunkSizes };
-}
-
-function rectilinearIssues(rawGrid: unknown, shape: number[] | undefined): ChunkGridVerdict {
+export function rectilinearIssues(rawGrid: unknown, shape: number[] | undefined): ChunkGridVerdict {
   const issues: PathedIssue[] = [];
   let chunkSizes: number[][] | undefined;
   const configuration = fieldParts(rawGrid)?.configuration;
@@ -139,20 +85,4 @@ function rectilinearIssues(rawGrid: unknown, shape: number[] | undefined): Chunk
     }
   }
   return { issues, chunkSizes };
-}
-
-/**
- * Interpret a document's `chunk_grid` field: required members, cross-field
- * rules against `shape`, and the division context for codec pipelines.
- * Unrecognized grid names yield no issues and no context — the extension
- * name space is open.
- */
-export function chunkGridVerdict(rawGrid: unknown, shape: number[] | undefined): ChunkGridVerdict {
-  if (!isPlainObject(rawGrid) && typeof rawGrid !== "string") {
-    return { issues: [], chunkSizes: undefined }; // structural layer's problem
-  }
-  const name = fieldParts(rawGrid)?.name;
-  if (name === "regular") return regularIssues(rawGrid, shape);
-  if (name === "rectilinear") return rectilinearIssues(rawGrid, shape);
-  return { issues: [], chunkSizes: undefined };
 }
