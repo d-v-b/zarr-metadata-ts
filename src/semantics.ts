@@ -6,13 +6,13 @@
  * extension points to enforce the cross-field rules the specs state in
  * prose:
  *
- * - the `regular` chunk grid's `chunk_shape` has one length per dimension
- *   of `shape`;
- * - the `rectilinear` chunk grid's `chunk_shapes` has one entry per
- *   dimension, and each explicit chunk list (integers and `[size, count]`
- *   run-length pairs) sums exactly to that dimension's length (the
- *   bare-integer uniform shorthand carries no sum constraint, like the
- *   regular grid);
+ * - the `regular` chunk grid REQUIRES a configuration with `chunk_shape`,
+ *   which has one length per dimension of `shape`;
+ * - the `rectilinear` chunk grid requires a configuration with `kind` and
+ *   `chunk_shapes`; `chunk_shapes` has one entry per dimension, and each
+ *   explicit chunk list (integers and `[size, count]` run-length pairs)
+ *   sums exactly to that dimension's length (the bare-integer uniform
+ *   shorthand carries no sum constraint, like the regular grid);
  * - a `transpose` codec's `order` is a permutation of `0..n-1`, with one
  *   entry per array dimension;
  * - a `sharding_indexed` codec's inner `chunk_shape` matches the array's
@@ -283,9 +283,28 @@ function arraySemanticsIssues(value: unknown): PathedIssue[] {
   const shape = isIntArray(value["shape"]) ? value["shape"] : undefined;
   const dims = shape?.length;
 
-  const grid = fieldParts(value["chunk_grid"]);
+  const rawGrid = value["chunk_grid"];
+  const grid = fieldParts(rawGrid);
+  // Whether the field genuinely lacks a configuration member (a malformed
+  // one — configuration: 5 — is the structural layer's complaint, not ours).
+  const configMissing =
+    typeof rawGrid === "string" ||
+    (isPlainObject(rawGrid) && !Object.hasOwn(rawGrid, "configuration"));
   let chunkSizes: number[][] | undefined;
   if (grid?.name === "regular") {
+    if (configMissing) {
+      issues.push({
+        path: ["chunk_grid"],
+        message: '"regular" requires a configuration with "chunk_shape"',
+        kind: "missing_key",
+      });
+    } else if (grid.configuration !== undefined && !Object.hasOwn(grid.configuration, "chunk_shape")) {
+      issues.push({
+        path: ["chunk_grid", "configuration", "chunk_shape"],
+        message: "missing required key",
+        kind: "missing_key",
+      });
+    }
     const configured = grid.configuration?.["chunk_shape"];
     if (isIntArray(configured)) {
       if (dims !== undefined && configured.length !== dims) {
@@ -300,6 +319,23 @@ function arraySemanticsIssues(value: unknown): PathedIssue[] {
       }
     }
   } else if (grid?.name === "rectilinear") {
+    if (configMissing) {
+      issues.push({
+        path: ["chunk_grid"],
+        message: '"rectilinear" requires a configuration with "kind" and "chunk_shapes"',
+        kind: "missing_key",
+      });
+    } else if (grid.configuration !== undefined) {
+      for (const key of ["kind", "chunk_shapes"]) {
+        if (!Object.hasOwn(grid.configuration, key)) {
+          issues.push({
+            path: ["chunk_grid", "configuration", key],
+            message: "missing required key",
+            kind: "missing_key",
+          });
+        }
+      }
+    }
     const specs = grid.configuration?.["chunk_shapes"];
     if (Array.isArray(specs)) {
       if (dims !== undefined && specs.length !== dims) {

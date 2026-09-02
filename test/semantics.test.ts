@@ -335,3 +335,37 @@ describe("validateArraySemanticsV3", () => {
     }
   });
 });
+
+describe("chunk grid configuration requirements", () => {
+  it("requires a configuration for the regular grid", () => {
+    expect(messages(array({ chunk_grid: "regular" }))).toEqual([
+      '"regular" requires a configuration with "chunk_shape"',
+    ]);
+    expect(messages(array({ chunk_grid: { name: "regular" } }))).toEqual([
+      '"regular" requires a configuration with "chunk_shape"',
+    ]);
+    expect(messages(array({ chunk_grid: { name: "regular", configuration: {} } }))).toEqual([
+      "missing required key",
+    ]);
+  });
+
+  it("requires kind and chunk_shapes for the rectilinear grid", () => {
+    expect(messages(array({ chunk_grid: "rectilinear" }))).toEqual([
+      '"rectilinear" requires a configuration with "kind" and "chunk_shapes"',
+    ]);
+    expect(
+      messages(array({ chunk_grid: { name: "rectilinear", configuration: { kind: "inline" } } })),
+    ).toEqual(["missing required key"]);
+    expect(
+      messages(
+        array({ chunk_grid: { name: "rectilinear", configuration: { chunk_shapes: [12, 12] } } }),
+      ),
+    ).toEqual(["missing required key"]);
+  });
+
+  it("leaves a malformed configuration to the structural layer", () => {
+    // configuration: 5 is present-but-wrong; the structural metadata-field
+    // validator owns that complaint.
+    expect(messages(array({ chunk_grid: { name: "regular", configuration: 5 } }))).toEqual([]);
+  });
+});

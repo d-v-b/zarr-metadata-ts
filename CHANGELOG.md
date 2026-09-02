@@ -1,5 +1,19 @@
 # zarr-metadata
 
+## 0.6.0
+
+### Minor Changes
+
+- The semantic layer now enforces the configuration requirements the spec
+  states for the two known chunk grids: `"regular"` requires a configuration
+  with `chunk_shape`, and `"rectilinear"` requires one with `kind` and
+  `chunk_shapes`. Previously a configless grid passed every always-on layer
+  silently. These are spec-semantics rules (knowing what the names mean),
+  so they live in the semantic layer rather than the structural validators,
+  whose extension points stay uninterpreted for conformance-corpus parity.
+  A present-but-malformed configuration remains the structural layer's
+  complaint.
+
 ## 0.5.0
 
 ### Minor Changes
