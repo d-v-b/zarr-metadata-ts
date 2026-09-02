@@ -80,7 +80,7 @@ The structural validators check key presence, value shapes, and fixed
 literals without interpreting extension points, matching the Python
 package's layering. The semantic layer (`validateSemanticsV3` /
 `validateArraySemanticsV3`) is TS-only and sits on top, organized by
-content: `chunk-grids.ts`, `codecs.ts`, and `data-types.ts` each hold the
+content: `chunk-grid.ts`, `codec.ts`, and `data-type.ts` each hold the
 syntax (configuration types) and semantics (required members, cross-field
 prose rules — grid arity and sums, transpose permutations, sharding
 divisibility, fill_value vs data type) for the names the package

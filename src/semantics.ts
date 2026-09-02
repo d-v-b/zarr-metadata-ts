@@ -1,7 +1,7 @@
 /**
  * Semantic (cross-field) validation for v3 array metadata: the
  * orchestrator. The rules themselves live with their content —
- * `chunk-grids.ts`, `codecs.ts`, and `data-types.ts` each hold the syntax
+ * `chunk-grid.ts`, `codec.ts`, and `data-type.ts` each hold the syntax
  * (types) and semantics (procedures) for the names this package
  * interprets, mirroring how the spec, the Python reference's type layout,
  * and the zarr-extensions registry are organized. This module only walks
@@ -18,9 +18,9 @@
  * modules.
  */
 
-import { chunkGridVerdict } from "./chunk-grids.js";
-import { pipelineIssues } from "./codecs.js";
-import { fillValueIssue } from "./data-types.js";
+import { chunkGridVerdict } from "./chunk-grid.js";
+import { pipelineIssues } from "./codec.js";
+import { fillValueIssue } from "./data-type.js";
 import { treeOf, type ErrorTree, type PathedIssue } from "./errors.js";
 import { fieldParts, isIntArray, isPlainObject } from "./guards.js";
 
