@@ -33,7 +33,10 @@ exists, so the first publish is manual:
 2. On npmjs.com → package **Settings** → **Trusted Publisher**, add
    GitHub Actions with:
    - organization/user: `d-v-b`
-   - repository: `zarr-metadata-ts`
+   - repository: `zarr-metadata.js`
+
+   The trusted-publisher binding is keyed to the repository NAME: renaming
+   the GitHub repository breaks it until this setting is updated to match.
    - workflow filename: `release.yml`
    - environment: (leave empty)
 
